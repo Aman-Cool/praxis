@@ -286,4 +286,18 @@ mod tests {
             "a non-UTF-8 field-line forces outright replacement"
         );
     }
+
+    #[test]
+    fn append_response_via_replaces_when_any_line_non_utf8() {
+        let mut resp = pingora_http::ResponseHeader::build(200, None).unwrap();
+        resp.append_header("via", "1.0 a").unwrap();
+        resp.append_header("via", HeaderValue::from_bytes(&[0x80, 0xFF]).unwrap())
+            .unwrap();
+        append_response_via(&mut resp, Version::HTTP_11);
+        assert_eq!(
+            resp.headers.get("via").unwrap(),
+            "1.1 praxis",
+            "a non-UTF-8 response field-line forces outright replacement"
+        );
+    }
 }

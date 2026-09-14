@@ -754,6 +754,38 @@ trusted_proxies:
         );
     }
 
+    #[tokio::test]
+    async fn non_utf8_xff_field_line_forces_overwrite_even_with_a_valid_line() {
+        // If ANY X-Forwarded-For field-line is non-UTF-8, the whole header is
+        // untrustworthy: drop every line (including the valid one) and overwrite
+        // with just the client IP, rather than preserving the valid line.
+        let f = make_filter(&["10.0.0.0/8"]);
+        let mut req = crate::test_utils::make_request(http::Method::GET, "/");
+        req.headers.append(
+            http::header::HeaderName::from_static("x-forwarded-for"),
+            "1.1.1.1".parse().unwrap(),
+        );
+        req.headers.append(
+            http::header::HeaderName::from_static("x-forwarded-for"),
+            http::HeaderValue::from_bytes(b"\xff\xfe").unwrap(),
+        );
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.client_addr = Some("10.1.2.3".parse().unwrap());
+
+        drop(f.on_request(&mut ctx).await.unwrap());
+
+        let xff = ctx
+            .extra_request_headers
+            .iter()
+            .find(|(k, _)| k == "X-Forwarded-For")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            xff,
+            Some("10.1.2.3"),
+            "a non-UTF-8 field-line must drop all lines and overwrite with just the client IP"
+        );
+    }
+
     #[test]
     fn from_config_with_standard_header() {
         let yaml: serde_yaml::Value = serde_yaml::from_str(

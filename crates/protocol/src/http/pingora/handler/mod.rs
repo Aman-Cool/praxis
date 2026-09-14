@@ -1164,6 +1164,25 @@ mod tests {
     }
 
     #[test]
+    fn passive_health_downstream_error_with_5xx_still_counts_as_failure() {
+        // The downstream-error skip only applies when NO upstream status was
+        // seen. A client (Downstream) error alongside a genuine upstream 5xx
+        // must still be charged as a failure; this guards the
+        // `&& ctx.upstream_response_status.is_none()` conjunct against removal.
+        let (pipeline, mut ctx) = make_passive_scenario(Some(1), Some(1));
+        ctx.upstream_response_status = Some(503);
+        let error = make_error().into_down();
+        record_passive_health(&pipeline, Some(&error), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            !entry.endpoints()[0].is_healthy(),
+            "a downstream error with an upstream 503 must still mark the endpoint unhealthy"
+        );
+    }
+
+    #[test]
     fn passive_health_downstream_error_does_not_reset_failure_streak() {
         // A client disconnect between two genuine upstream failures must
         // not clear the endpoint's failure streak (which recording it as a
