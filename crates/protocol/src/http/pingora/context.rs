@@ -326,6 +326,14 @@ pub struct PingoraRequestCtx {
 
     /// Saved upstream for retry (cloned before first use).
     pub upstream_for_retry: Option<Upstream>,
+
+    /// Whether the upstream was contacted (a peer was resolved for at least
+    /// one attempt) during this request. Unlike `upstream_for_retry`, which a
+    /// retry decision clears to force reselection, this stays set once the
+    /// upstream has been reached, so response-phase health accounting (passive
+    /// health, circuit breaker) can tell a genuine connect/read failure from a
+    /// request that never reached the cluster. Reset per request.
+    pub upstream_contacted: bool,
 }
 
 /// Build an [`HttpFilterContext`] from a `PingoraRequestCtx`.
@@ -378,7 +386,7 @@ macro_rules! filter_context {
             response_body_mode: $ctx.response_body_mode,
             response_header: $response_header,
             response_headers_modified: false,
-            upstream_reached: $ctx.upstream_for_retry.is_some(),
+            upstream_reached: $ctx.upstream_contacted,
             rewritten_path: $ctx.rewritten_path.take(),
             selected_endpoint_index: $ctx.selected_endpoint_index,
             attempted_endpoints: std::mem::take(&mut $ctx.attempted_endpoints),
@@ -593,6 +601,7 @@ impl Default for PingoraRequestCtx {
             reselect_on_retry: false,
             upstream: None,
             upstream_for_retry: None,
+            upstream_contacted: false,
         }
     }
 }

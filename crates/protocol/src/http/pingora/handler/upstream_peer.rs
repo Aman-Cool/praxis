@@ -142,6 +142,13 @@ pub(super) async fn execute(ctx: &mut PingoraRequestCtx) -> Result<Box<HttpPeer>
         ctx.upstream_for_retry = upstream;
     }
 
+    if ctx.upstream_for_retry.is_some() {
+        // Record that a peer was resolved for this attempt. Sticky for the
+        // request: a later retry that clears upstream_for_retry to force
+        // reselection must not erase the "upstream was contacted" signal that
+        // response-phase health accounting relies on.
+        ctx.upstream_contacted = true;
+    }
     let upstream = ctx.upstream_for_retry.as_ref().ok_or_else(|| {
         let cluster = &ctx.cluster;
         pingora_core::Error::explain(

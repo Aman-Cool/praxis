@@ -544,14 +544,14 @@ fn record_passive_health(pipeline: &FilterPipeline, error: Option<&pingora_core:
     };
 
     // A request that never contacted the upstream carries no signal about the
-    // endpoint, so skip it. upstream_for_retry is set only at peer selection
-    // (upstream_peer) and is reset per request, so it is None for a filter
-    // reject or terminal response after endpoint selection (which would
-    // otherwise record a spurious success against the untouched endpoint and
-    // reset a real failure streak) and for a proxy-generated terminal
-    // response (whose upstream_response_status is set even though no upstream
-    // was contacted). Genuine connect failures keep it Some.
-    if ctx.upstream_for_retry.is_none() {
+    // endpoint, so skip it. upstream_contacted is set once a peer is resolved
+    // and stays set across retries (unlike upstream_for_retry, which a retry
+    // clears to force reselection), so it distinguishes a genuine connect or
+    // read failure from a filter reject or a proxy-generated terminal response
+    // after endpoint selection, which would otherwise record a spurious
+    // observation against the untouched endpoint and skew a real failure
+    // streak.
+    if !ctx.upstream_contacted {
         return;
     }
 
@@ -1210,15 +1210,14 @@ mod tests {
         // record a passive observation; recording a success would reset a real
         // failure streak. upstream_for_retry is the "upstream contacted" signal.
         let (pipeline, mut ctx) = make_passive_scenario(Some(2), Some(1));
-        let contacted = ctx.upstream_for_retry.clone();
         let mut upstream_err = make_error();
         upstream_err.as_up();
 
         // Contacted: a genuine upstream failure.
         record_passive_health(&pipeline, Some(&upstream_err), &ctx);
 
-        // Filter reject after selection: no contact, no status -> skipped.
-        ctx.upstream_for_retry = None;
+        // Filter reject after selection: never contacted -> skipped.
+        ctx.upstream_contacted = false;
         record_passive_health(&pipeline, None, &ctx);
 
         // Proxy-generated terminal response: a status is set but the upstream
@@ -1228,7 +1227,7 @@ mod tests {
         ctx.upstream_response_status = None;
 
         // Contacted again: the second genuine failure ejects the endpoint.
-        ctx.upstream_for_retry = contacted;
+        ctx.upstream_contacted = true;
         record_passive_health(&pipeline, Some(&upstream_err), &ctx);
 
         let registry = pipeline.health_registry().unwrap();
@@ -1236,6 +1235,27 @@ mod tests {
         assert!(
             !entry.endpoints()[0].is_healthy(),
             "observations without upstream contact must not reset the failure streak"
+        );
+    }
+
+    #[test]
+    fn passive_health_records_connect_failure_after_reselect_clears_upstream() {
+        // A retry decision clears upstream_for_retry to force reselection; if
+        // no alternate endpoint exists the request ends with a connect error
+        // and upstream_for_retry None. The sticky upstream_contacted signal
+        // must still let that connect failure count toward ejection.
+        let (pipeline, mut ctx) = make_passive_scenario(Some(1), Some(1));
+        ctx.upstream_for_retry = None;
+        ctx.upstream_contacted = true;
+        let mut error = make_error();
+        error.as_up();
+        record_passive_health(&pipeline, Some(&error), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            !entry.endpoints()[0].is_healthy(),
+            "a connect failure after reselection cleared upstream_for_retry must still count"
         );
     }
 
@@ -2031,12 +2051,7 @@ mod tests {
         ctx.selected_endpoint_index = Some(endpoint_idx);
         ctx.upstream_response_status = status;
         // A passive-health observation implies the upstream was contacted.
-        ctx.upstream_for_retry = Some(Upstream {
-            address: Arc::from("10.0.0.1:80"),
-            authority: None,
-            connection: Arc::new(ConnectionOptions::default()),
-            tls: None,
-        });
+        ctx.upstream_contacted = true;
         ctx
     }
 

@@ -94,6 +94,7 @@ pub(in crate::http) async fn execute(
     // upstream_for_retry is set during upstream_peer selection and must not
     // leak into the next request's filter context.
     ctx.upstream_for_retry = None;
+    ctx.upstream_contacted = false;
 
     let mut request = request_header_from_session(session);
     ctx.client_addr = session
