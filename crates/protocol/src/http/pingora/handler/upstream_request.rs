@@ -57,6 +57,12 @@ pub(crate) fn strip_hop_by_hop(req: &mut RequestHeader, is_upgrade: bool) {
 
 /// Apply a rewritten path from the filter pipeline to the upstream request.
 ///
+/// Reads `rewritten_path` without consuming it so the rewrite is
+/// re-applied on every upstream attempt. Pingora restarts each retry
+/// from a fresh clone of the original downstream request, so a consumed
+/// path would leave retried attempts forwarding the original,
+/// un-rewritten path.
+///
 /// Validates that the path starts with `/`, contains no scheme or
 /// authority components, and has no `..` traversal segments before
 /// applying. Returns an error on invalid paths rather than silently
@@ -67,8 +73,8 @@ pub(crate) fn strip_hop_by_hop(req: &mut RequestHeader, is_upgrade: bool) {
 ///
 /// Returns a Pingora error if the rewritten path is malformed,
 /// contains traversal, or includes a scheme/authority.
-pub(crate) fn apply_rewritten_path(req: &mut RequestHeader, ctx: &mut PingoraRequestCtx) -> pingora_core::Result<()> {
-    let Some(new_path) = ctx.rewritten_path.take() else {
+pub(crate) fn apply_rewritten_path(req: &mut RequestHeader, ctx: &PingoraRequestCtx) -> pingora_core::Result<()> {
+    let Some(new_path) = ctx.rewritten_path.as_deref() else {
         return Ok(());
     };
 
@@ -526,10 +532,34 @@ mod tests {
         let mut ctx = PingoraRequestCtx::default();
         ctx.rewritten_path = Some("/rewritten".to_owned());
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(req.uri.path(), "/rewritten", "URI should be rewritten");
-        assert!(ctx.rewritten_path.is_none(), "rewritten_path should be taken");
+        assert_eq!(
+            ctx.rewritten_path.as_deref(),
+            Some("/rewritten"),
+            "rewritten_path is retained so retried attempts re-apply it"
+        );
+    }
+
+    #[test]
+    fn apply_rewritten_path_reapplies_on_retry() {
+        // Pingora restarts each retry from a fresh clone of the original
+        // downstream request, so the rewrite must survive to be re-applied.
+        let mut ctx = PingoraRequestCtx::default();
+        ctx.rewritten_path = Some("/rewritten".to_owned());
+
+        let mut attempt1 = RequestHeader::build("GET", b"/original", None).unwrap();
+        apply_rewritten_path(&mut attempt1, &ctx).unwrap();
+        assert_eq!(attempt1.uri.path(), "/rewritten", "first attempt is rewritten");
+
+        let mut attempt2 = RequestHeader::build("GET", b"/original", None).unwrap();
+        apply_rewritten_path(&mut attempt2, &ctx).unwrap();
+        assert_eq!(
+            attempt2.uri.path(),
+            "/rewritten",
+            "retried attempt must also carry the rewritten path"
+        );
     }
 
     #[test]
@@ -538,7 +568,7 @@ mod tests {
         let mut ctx = PingoraRequestCtx::default();
         ctx.rewritten_path = Some("/new?x=1".to_owned());
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(req.uri.path(), "/new", "path should be rewritten");
         assert_eq!(req.uri.query(), Some("x=1"), "query should be preserved");
@@ -549,7 +579,7 @@ mod tests {
         let mut req = RequestHeader::build("GET", b"/keep", None).unwrap();
         let mut ctx = PingoraRequestCtx::default();
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(req.uri.path(), "/keep", "URI should be unchanged when no rewrite");
     }
@@ -561,7 +591,7 @@ mod tests {
         ctx.rewritten_path = Some("http://evil.com/path".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "absolute URI should be rejected"
         );
     }
@@ -573,7 +603,7 @@ mod tests {
         ctx.rewritten_path = Some("relative/path".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "path without leading slash should be rejected"
         );
     }
@@ -585,7 +615,7 @@ mod tests {
         ctx.rewritten_path = Some("https:///path".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "scheme-only URI should be rejected"
         );
     }
@@ -597,7 +627,7 @@ mod tests {
         ctx.rewritten_path = Some("//evil.com/path".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "authority-only URI should be rejected"
         );
     }
@@ -608,7 +638,7 @@ mod tests {
         let mut ctx = PingoraRequestCtx::default();
         ctx.rewritten_path = Some("/valid/path".to_owned());
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(req.uri.path(), "/valid/path", "valid absolute path should be accepted");
     }
@@ -620,7 +650,7 @@ mod tests {
         ctx.rewritten_path = Some("/api/../admin".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "path with '..' traversal should be rejected"
         );
     }
@@ -632,7 +662,7 @@ mod tests {
         ctx.rewritten_path = Some("/api/..".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "path ending with '..' should be rejected"
         );
     }
@@ -643,7 +673,7 @@ mod tests {
         let mut ctx = PingoraRequestCtx::default();
         ctx.rewritten_path = Some("/api/..config".to_owned());
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(
             req.uri.path(),
@@ -659,7 +689,7 @@ mod tests {
         ctx.rewritten_path = Some("/api/%2e%2e/admin".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "percent-encoded '..' (%2e%2e) should be rejected"
         );
     }
@@ -671,7 +701,7 @@ mod tests {
         ctx.rewritten_path = Some("/api/.%2e/admin".to_owned());
 
         assert!(
-            apply_rewritten_path(&mut req, &mut ctx).is_err(),
+            apply_rewritten_path(&mut req, &ctx).is_err(),
             "mixed-encoded '..' (.%2e) should be rejected"
         );
     }
@@ -682,7 +712,7 @@ mod tests {
         let mut ctx = PingoraRequestCtx::default();
         ctx.rewritten_path = Some("/".to_owned());
 
-        apply_rewritten_path(&mut req, &mut ctx).unwrap();
+        apply_rewritten_path(&mut req, &ctx).unwrap();
 
         assert_eq!(req.uri.path(), "/", "root path should be accepted");
     }
