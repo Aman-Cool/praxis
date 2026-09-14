@@ -374,6 +374,13 @@ impl CircuitBreaker {
         drop(inner);
     }
 
+    /// In-flight slot count (probes plus admitted requests), for tests.
+    #[cfg(test)]
+    #[expect(clippy::expect_used, reason = "poisoned mutex is unrecoverable")]
+    pub fn in_flight(&self) -> u32 {
+        self.inner.lock().expect("circuit breaker lock poisoned").in_flight
+    }
+
     /// Whether the breaker has no request in flight and has been idle for
     /// at least `idle_threshold`, and is therefore safe to evict.
     ///
@@ -685,11 +692,17 @@ mod tests {
             panic!("half-open should allow a probe");
         };
         assert_eq!(cb.state(), CircuitState::HalfOpen);
+        assert_eq!(cb.in_flight(), 1, "the half-open probe occupies the in-flight slot");
         cb.release(probe);
         assert_eq!(
             cb.state(),
             CircuitState::HalfOpen,
             "releasing an unreached probe must leave the circuit half-open"
+        );
+        assert_eq!(
+            cb.in_flight(),
+            0,
+            "release must free the in-flight slot so the breaker can later be idle-evicted"
         );
     }
 
