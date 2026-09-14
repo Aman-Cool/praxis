@@ -19,7 +19,7 @@ use super::endpoint::WeightedEndpoint;
 /// relative to the total weight of all (healthy) endpoints. With equal
 /// weights this reduces to uniform random selection.
 pub(crate) struct Random {
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Sum of all endpoint weights (pre-computed, widened to `usize`).

@@ -44,7 +44,7 @@ pub(crate) struct PowerOfTwoChoices {
     /// [`release`]: Self::release
     index_by_addr: HashMap<Arc<str>, usize>,
 
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Deterministic RNG state (no randomness needed; just spread).

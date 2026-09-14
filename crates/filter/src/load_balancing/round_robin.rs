@@ -18,7 +18,7 @@ use super::endpoint::WeightedEndpoint;
 
 /// Weighted round-robin selector using cumulative weight buckets.
 pub(crate) struct RoundRobin {
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Sum of all endpoint weights (pre-computed, widened to `usize`).
@@ -67,7 +67,6 @@ impl RoundRobin {
     /// with a cumulative-weight loop — zero allocations.
     /// Slow path (retry case): collects candidates, filters by exclude, then walks.
     #[expect(clippy::too_many_lines, reason = "fast/slow path split is clearer inline")]
-    #[expect(clippy::indexing_slicing, reason = "bounds checked")]
     fn select_healthy(&self, tick: usize, state: &ClusterHealthState, exclude: &[Arc<str>]) -> Option<Arc<str>> {
         if exclude.is_empty() {
             let mut healthy_weight = 0_usize;

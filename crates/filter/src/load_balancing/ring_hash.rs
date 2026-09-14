@@ -20,7 +20,7 @@ use super::{endpoint::WeightedEndpoint, hash::fnv1a};
 
 /// Consistent-hash ring with configurable hash function and virtual node density.
 pub(crate) struct RingHash {
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Header whose value is hashed. Falls back to the URI path when `None`

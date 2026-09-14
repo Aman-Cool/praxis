@@ -16,7 +16,7 @@ use super::{endpoint::WeightedEndpoint, hash::fnv1a};
 /// Routes each request to the same endpoint by hashing a stable
 /// attribute. Virtual nodes are proportional to endpoint weight.
 pub(crate) struct ConsistentHash {
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Header whose value is hashed. Falls back to the URI path when `None`

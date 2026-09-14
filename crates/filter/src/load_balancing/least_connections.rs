@@ -38,7 +38,7 @@ pub(crate) struct LeastConnections {
     /// [`release`]: Self::release
     index_by_addr: HashMap<Arc<str>, usize>,
 
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Round-robin tiebreaker for equal load and weight.
@@ -110,7 +110,6 @@ impl LeastConnections {
     /// Scan endpoints and return the best candidate address with its
     /// current load. Prefers healthy endpoints when health state is
     /// available; falls back to all endpoints.
-    #[expect(clippy::indexing_slicing, reason = "bounds checked")]
     fn find_best(&self, health: Option<&ClusterHealthState>, exclude: &[Arc<str>]) -> Option<(usize, usize)> {
         let offset = self.rr_counter.fetch_add(1, Ordering::Relaxed);
 

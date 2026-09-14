@@ -35,7 +35,7 @@ const SENTINEL: u32 = u32::MAX;
 /// Endpoints are expanded into `weight` replicas during population, so the
 /// resulting distribution is proportional to endpoint weight.
 pub(crate) struct Maglev {
-    /// Deduplicated endpoint list with weights and original indices.
+    /// Deduplicated endpoint list with weights.
     endpoints: Vec<WeightedEndpoint>,
 
     /// Header whose value is hashed. Falls back to the URI path when `None`
