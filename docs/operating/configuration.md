@@ -677,6 +677,16 @@ Per-cluster active HTTP/TCP probes and passive inline
 failure tracking remove unhealthy endpoints from rotation.
 See [health-checks.yaml](../../examples/configs/traffic-management/health-checks.yaml).
 
+Health checks are the only consumer of the top-level
+`clusters:` section. The data path builds its upstreams
+from the clusters defined inline in the `load_balancer`
+(or `tcp_load_balancer` / `endpoint_selector`) filter, so
+data-path settings on a top-level cluster (for example
+`tls`, `retry_policy`, the timeout fields, or
+`load_balancer_strategy`) are used only for probing and do
+not affect proxied traffic. Configure those on the inline
+load-balancer cluster instead.
+
 ## Failure Mode
 
 Filters declare `failure_mode: open` (continue on error)
