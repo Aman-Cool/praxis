@@ -8,7 +8,7 @@ use praxis_core::config::Config;
 use praxis_filter::{BodyAccess, BodyMode, FilterAction, FilterError, HttpFilter, HttpFilterContext, Rejection};
 use praxis_test_utils::{
     Backend, custom_filter_yaml, free_port, http_post, http_send, parse_status, registry_with, simple_proxy_yaml,
-    start_backend_with_shutdown, start_echo_backend, start_proxy, start_proxy_with_registry,
+    start_backend_with_shutdown, start_echo_backend, start_proxy, start_proxy_with_registry, start_uri_echo_backend,
 };
 
 // -----------------------------------------------------------------------------
@@ -100,6 +100,64 @@ insecure_options:
     assert_eq!(
         body, "HELLO WORLD",
         "the retry must replay the mutated (uppercased) body, not the original bytes"
+    );
+}
+
+#[test]
+fn streamed_body_rewrite_is_reapplied_on_retry() {
+    // A path rewrite plus a STREAM-mode request-body filter: the request-body
+    // phase takes rewritten_path out of the context, so without restoring it a
+    // retry would forward the original path. A 503 first attempt retries onto a
+    // uri-echo backend, which must report the rewritten path.
+    let failing = Backend::status(503, "unavailable").start();
+    let healthy = start_uri_echo_backend();
+    let healthy_port = healthy.port();
+    let proxy_port = free_port();
+    let yaml = format!(
+        r#"
+listeners:
+  - name: default
+    address: "127.0.0.1:{proxy_port}"
+    filter_chains: [main]
+filter_chains:
+  - name: main
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: "/"
+            cluster: backend
+      - filter: path_rewrite
+        strip_prefix: "/api/v1"
+        conditions:
+          - when:
+              path_prefix: "/api/v1"
+      - filter: body_uppercase
+      - filter: load_balancer
+        clusters:
+          - name: backend
+            endpoints:
+              - "127.0.0.1:{failing}"
+              - "127.0.0.1:{healthy_port}"
+            retry_policy:
+              max_retries: 3
+              allow_non_idempotent: true
+              retriable_conditions: [connect_failure, status_5xx]
+              backoff:
+                base_interval_ms: 1
+                max_interval_ms: 5
+insecure_options:
+  allow_private_endpoints: true
+"#
+    );
+    let config = Config::from_yaml(&yaml).unwrap();
+    let registry = registry_with("body_uppercase", || Box::new(BodyUppercaseFilter::streaming()));
+    let proxy = start_proxy_with_registry(&config, &registry);
+
+    let (status, body) = http_post(proxy.addr(), "/api/v1/users", "hello");
+    assert_eq!(status, 200, "a 503 first attempt should retry onto the healthy backend");
+    assert_eq!(
+        body, "/users",
+        "the retry must forward the rewritten path even with a streaming request-body filter"
     );
 }
 
