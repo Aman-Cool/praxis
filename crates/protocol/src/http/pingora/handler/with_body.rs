@@ -156,13 +156,12 @@ impl ProxyHttp for PingoraHttpHandler {
     where
         Self::CTX: Send + Sync,
     {
-        // Clear stale upstream-contact state from the previous request on this
-        // keep-alive connection before ANY rejection path (the memory and
-        // connection-limit 503s below, or the early exits inside request_filter):
-        // this is the first per-request hook, so a follow-up request that never
-        // reaches an upstream cannot inherit the prior request's
-        // upstream_contacted and record a spurious passive-health or
-        // circuit-breaker observation against its endpoint.
+        // Defensively clear upstream-contact state at the first per-request hook.
+        // The current Pingora fork builds a fresh context per request
+        // (persist_connection_context is off), so nothing leaks across keep-alive
+        // requests today; this is belt-and-suspenders that keeps the invariant
+        // true before every rejection path (the 503s below and the early exits in
+        // request_filter) should context reuse ever be enabled.
         ctx.upstream_for_retry = None;
         ctx.upstream_contacted = false;
 
