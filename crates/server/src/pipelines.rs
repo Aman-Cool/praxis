@@ -69,6 +69,19 @@ pub fn build_subrequest_client(config: &Config) -> SubRequestClient {
     SubRequestClient::with_max_response_bytes(connector, ceiling)
 }
 
+/// Register the connector the policy engine's outbound calls borrow.
+///
+/// Call before resolving pipelines because filter initialization may issue
+/// policy HTTP requests.
+#[cfg(feature = "policy-engine")]
+fn register_policy_connector(client: &SubRequestClient) {
+    praxis_filter::set_policy_subrequest_connector(client.connector());
+}
+
+/// No policy engine is compiled in, so there is nothing to register.
+#[cfg(not(feature = "policy-engine"))]
+fn register_policy_connector(_client: &SubRequestClient) {}
+
 // -----------------------------------------------------------------------------
 // Pipeline Resolution
 // -----------------------------------------------------------------------------
@@ -123,6 +136,9 @@ pub fn resolve_pipelines(
 /// hooks run again on every hot reload, so downstream extensions are never lost
 /// across a reload.
 ///
+/// Registers `subrequest_client`'s connector for the policy engine first, since
+/// a policy filter fetches JWKS while it is being constructed.
+///
 /// # Errors
 ///
 /// Returns an error when pipeline construction fails (unknown filter chain
@@ -147,6 +163,11 @@ pub(crate) fn resolve_pipelines_with_composition(
     subrequest_client: &SubRequestClient,
     composition: &PipelineComposition,
 ) -> Result<ListenerPipelines, Box<dyn std::error::Error + Send + Sync>> {
+    // Before any pipeline is built: a policy filter fetches JWKS while it is
+    // being constructed below. This sits here rather than in the wrapper so
+    // the composition path registers too.
+    register_policy_connector(subrequest_client);
+
     let chains: HashMap<&str, &[_]> = config
         .filter_chains
         .iter()
