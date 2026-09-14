@@ -750,6 +750,31 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "config-reload")]
+    fn build_reloadable_server_config_tcp_advertises_no_alpn() {
+        let certs = gen_test_certs();
+        let tls = ListenerTls {
+            certificates: vec![CertKeyPair {
+                cert_path: certs.cert_path.to_str().expect("cert path").to_owned(),
+                default: false,
+                key_path: certs.key_path.to_str().expect("key path").to_owned(),
+                server_names: Vec::new(),
+            }],
+            cipher_suites: None,
+            client_ca: None,
+            client_cert_mode: ClientCertMode::None,
+            hot_reload: None,
+            min_version: None,
+        };
+
+        let result = build_reloadable_server_config(&tls, false).expect("reloadable build should succeed");
+        assert!(
+            result.config.alpn_protocols.is_empty(),
+            "a TCP-over-TLS reloadable listener must advertise no ALPN"
+        );
+    }
+
+    #[test]
     fn cipher_strength_tier_aes256_is_highest() {
         assert_eq!(
             cipher_strength_tier(&CipherSuiteId::Tls13Aes256GcmSha384),
