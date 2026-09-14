@@ -156,6 +156,16 @@ impl ProxyHttp for PingoraHttpHandler {
     where
         Self::CTX: Send + Sync,
     {
+        // Clear stale upstream-contact state from the previous request on this
+        // keep-alive connection before ANY rejection path (the memory and
+        // connection-limit 503s below, or the early exits inside request_filter):
+        // this is the first per-request hook, so a follow-up request that never
+        // reaches an upstream cannot inherit the prior request's
+        // upstream_contacted and record a spurious passive-health or
+        // circuit-breaker observation against its endpoint.
+        ctx.upstream_for_retry = None;
+        ctx.upstream_contacted = false;
+
         if praxis_core::memory::is_exceeded() {
             metrics::record_overload_reject(metrics::OVERLOAD_REASON_MEMORY);
             return reject_503(session, "5", "memory pressure exceeded").await;

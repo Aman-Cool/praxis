@@ -63,14 +63,9 @@ pub(in crate::http) async fn execute(
     session: &mut Session,
     ctx: &mut PingoraRequestCtx,
 ) -> Result<bool> {
-    // Clear stale upstream state from the previous request on this keep-alive
-    // connection before any early-exit path runs: upstream_for_retry and
-    // upstream_contacted are set during upstream selection, and if they leaked
-    // into an early-exit follow-up, record_passive_health would attribute a
-    // spurious observation to the prior request's endpoint.
-    ctx.upstream_for_retry = None;
-    ctx.upstream_contacted = false;
-
+    // Stale upstream-contact state from a prior keep-alive request is cleared in
+    // early_request_filter (the first per-request hook), before any rejection
+    // path, so it cannot leak into this request's passive-health attribution.
     if let Some(rejection) = validation::validate_host_header(session) {
         snapshot_for_early_exit(session, ctx);
         send_rejection(session, rejection).await;
