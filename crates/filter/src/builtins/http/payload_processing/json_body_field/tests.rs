@@ -222,7 +222,7 @@ async fn returns_continue_on_incomplete_json() {
     let partial = br#"{"model":"model-alp"#;
     let mut body = Some(Bytes::from_static(partial));
 
-    let action = filter.on_request_body(&mut ctx, &mut body, false).await.unwrap();
+    let action = filter.on_request_body(&mut ctx, &mut body, true).await.unwrap();
 
     assert!(
         matches!(action, FilterAction::Continue),
@@ -246,7 +246,7 @@ async fn incomplete_json_does_not_promote() {
     let json = br#"{"model":"model-alpha-1","pro"#;
     let mut body = Some(Bytes::from_static(json));
 
-    let action = filter.on_request_body(&mut ctx, &mut body, false).await.unwrap();
+    let action = filter.on_request_body(&mut ctx, &mut body, true).await.unwrap();
 
     assert!(
         matches!(action, FilterAction::Continue),
@@ -388,7 +388,7 @@ async fn incomplete_multi_field_body_does_not_promote() {
     let json = br#"{"model":"m1","user_id":"u1","messages":"#;
     let mut body = Some(Bytes::from_static(json));
 
-    let action = filter.on_request_body(&mut ctx, &mut body, false).await.unwrap();
+    let action = filter.on_request_body(&mut ctx, &mut body, true).await.unwrap();
 
     assert!(
         matches!(action, FilterAction::Continue),
@@ -920,10 +920,10 @@ async fn repeated_body_hooks_do_not_duplicate_promoted_headers() {
     let mut ctx = crate::test_utils::make_filter_context(&req);
     ctx.current_filter_id = Some(0);
 
-    // First, a complete body promotes and returns BodyDone.
+    // First, a complete body at end-of-stream promotes and returns BodyDone.
     let full = br#"{"model":"gpt-4","messages":[{"role":"user","content":"hi"}]}"#;
     let mut body = Some(Bytes::from_static(full));
-    let action = filter.on_request_body(&mut ctx, &mut body, false).await.unwrap();
+    let action = filter.on_request_body(&mut ctx, &mut body, true).await.unwrap();
     assert!(
         matches!(action, FilterAction::BodyDone),
         "a complete body with the mapped field should BodyDone"
