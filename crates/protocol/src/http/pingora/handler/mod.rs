@@ -1208,7 +1208,7 @@ mod tests {
         // A request that never contacted the upstream (a filter reject or a
         // proxy-generated terminal response after endpoint selection) must not
         // record a passive observation; recording a success would reset a real
-        // failure streak. upstream_for_retry is the "upstream contacted" signal.
+        // failure streak. upstream_contacted is the "upstream contacted" signal.
         let (pipeline, mut ctx) = make_passive_scenario(Some(2), Some(1));
         let mut upstream_err = make_error();
         upstream_err.as_up();
