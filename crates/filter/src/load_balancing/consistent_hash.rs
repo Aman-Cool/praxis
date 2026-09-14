@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use praxis_core::health::{ClusterHealthState, EndpointHealth};
+use praxis_core::health::ClusterHealthState;
 
 use super::{endpoint::WeightedEndpoint, hash::fnv1a};
 
@@ -70,8 +70,7 @@ impl ConsistentHash {
 
         if let Some(state) = health
             && let Some(addr) = self.probe(start, exclude, |ep| {
-                ep.index < state.endpoints().len()
-                    && state.endpoints().get(ep.index).is_some_and(EndpointHealth::is_healthy)
+                state.is_address_healthy(&ep.address)
             })
         {
             return Some(addr);
@@ -144,7 +143,7 @@ fn is_excluded(addr: &str, exclude: &[Arc<str>]) -> bool {
     reason = "tests"
 )]
 mod tests {
-    use praxis_core::health::ClusterHealthEntry;
+    use praxis_core::health::{ClusterHealthEntry, EndpointHealth};
 
     use super::*;
 
@@ -152,8 +151,8 @@ mod tests {
     fn same_key_same_endpoint() {
         let ch = ConsistentHash::new(
             vec![
-                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
             ],
             None,
         );
@@ -167,8 +166,8 @@ mod tests {
     fn different_keys_select_different_endpoints() {
         let ch = ConsistentHash::new(
             vec![
-                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
             ],
             None,
         );
@@ -185,9 +184,9 @@ mod tests {
     fn skips_unhealthy() {
         let ch = ConsistentHash::new(
             vec![
-                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.3:80"), 2, 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.3:80"), 1),
             ],
             None,
         );
@@ -217,8 +216,8 @@ mod tests {
     fn panic_mode_when_all_unhealthy() {
         let ch = ConsistentHash::new(
             vec![
-                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
             ],
             None,
         );
@@ -242,9 +241,9 @@ mod tests {
     fn select_with_none_hash_key_uses_fallback() {
         let ch = ConsistentHash::new(
             vec![
-                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
-                WeightedEndpoint::simple(Arc::from("10.0.0.3:80"), 2, 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
+                WeightedEndpoint::simple(Arc::from("10.0.0.3:80"), 1),
             ],
             None,
         );
@@ -262,8 +261,8 @@ mod tests {
     #[test]
     fn weight_stability() {
         let endpoints = vec![
-            WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 3),
-            WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
+            WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 3),
+            WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
         ];
         let ch = ConsistentHash::new(endpoints, None);
 

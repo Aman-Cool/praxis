@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use praxis_core::health::{ClusterHealthState, EndpointHealth};
+use praxis_core::health::ClusterHealthState;
 
 use super::endpoint::WeightedEndpoint;
 
@@ -83,7 +83,7 @@ impl Maglev {
 
         if let Some(state) = health
             && let Some(addr) = self.probe(start, exclude, |ep| {
-                state.endpoints().get(ep.index).is_some_and(EndpointHealth::is_healthy)
+                state.is_address_healthy(&ep.address)
             })
         {
             return Some(addr);
@@ -241,7 +241,7 @@ fn fnv1a_seeded(s: &str, seed: u64) -> u64 {
 mod tests {
     use std::collections::{HashMap, HashSet};
 
-    use praxis_core::health::ClusterHealthEntry;
+    use praxis_core::health::{ClusterHealthEntry, EndpointHealth};
 
     use super::*;
 
@@ -329,8 +329,8 @@ mod tests {
     #[test]
     fn weight_stability() {
         let eps = vec![
-            WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 0, 3),
-            WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1, 1),
+            WeightedEndpoint::simple(Arc::from("10.0.0.1:80"), 3),
+            WeightedEndpoint::simple(Arc::from("10.0.0.2:80"), 1),
         ];
         let mg = Maglev::new(eps, None);
 
@@ -448,7 +448,7 @@ mod tests {
     /// Build `n` equal-weight endpoints `10.0.0.{i+1}:80`.
     fn endpoints(n: usize) -> Vec<WeightedEndpoint> {
         (0..n)
-            .map(|i| WeightedEndpoint::simple(Arc::from(format!("10.0.0.{}:80", i + 1).as_str()), i, 1))
+            .map(|i| WeightedEndpoint::simple(Arc::from(format!("10.0.0.{}:80", i + 1).as_str()), 1))
             .collect()
     }
 
