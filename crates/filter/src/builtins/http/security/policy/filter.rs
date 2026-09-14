@@ -374,7 +374,8 @@ impl PolicyFilter {
     /// Keys are normalized to ASCII lowercase. HTTP header names are
     /// case-insensitive (RFC 7230 §3.2) but the `HashMap` lookup is
     /// case-sensitive; plugins lowercase their configured header
-    /// before lookup to match.
+    /// before lookup to match. Duplicate field-lines of the same header
+    /// are comma-joined (RFC 7230 §3.2.2), not collapsed to the last value.
     pub(super) fn snapshot_headers(ctx: &HttpFilterContext<'_>) -> std::collections::HashMap<String, String> {
         // Duplicate field-lines of the same header are comma-joined
         // (RFC 7230 §3.2.2) instead of collapsed to the last value, so
