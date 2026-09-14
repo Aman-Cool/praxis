@@ -100,11 +100,7 @@ impl Subset {
         let Some(state) = health else {
             return false;
         };
-        !self.subset_addresses.is_empty()
-            && self
-                .subset_addresses
-                .iter()
-                .all(|addr| !state.is_address_healthy(addr))
+        !self.subset_addresses.is_empty() && self.subset_addresses.iter().all(|addr| !state.is_address_healthy(addr))
     }
 
     /// Propagate release to inner strategies.

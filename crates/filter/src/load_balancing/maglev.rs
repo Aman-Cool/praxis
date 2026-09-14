@@ -82,9 +82,7 @@ impl Maglev {
         let start = (fnv1a_seeded(key, 0) as usize) % len;
 
         if let Some(state) = health
-            && let Some(addr) = self.probe(start, exclude, |ep| {
-                state.is_address_healthy(&ep.address)
-            })
+            && let Some(addr) = self.probe(start, exclude, |ep| state.is_address_healthy(&ep.address))
         {
             return Some(addr);
         }

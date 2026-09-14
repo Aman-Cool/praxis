@@ -6,10 +6,7 @@
 
 use std::sync::Arc;
 
-use praxis_core::{
-    config::SimpleStrategy,
-    health::ClusterHealthState,
-};
+use praxis_core::{config::SimpleStrategy, health::ClusterHealthState};
 
 use super::{
     endpoint::WeightedEndpoint,
@@ -263,11 +260,7 @@ mod tests {
 
     #[test]
     fn multiple_failover_tiers() {
-        let endpoints = vec![
-            ep("10.0.0.1:80", 0),
-            ep("10.0.0.2:80", 1),
-            ep("10.0.0.3:80", 2),
-        ];
+        let endpoints = vec![ep("10.0.0.1:80", 0), ep("10.0.0.2:80", 1), ep("10.0.0.3:80", 2)];
         let pl = PriorityLevels::new(endpoints, &SimpleStrategy::RoundRobin, 140);
 
         let state = health_state(3);
@@ -283,11 +276,7 @@ mod tests {
 
     #[test]
     fn all_same_priority_acts_as_single_tier() {
-        let endpoints = vec![
-            ep("10.0.0.1:80", 0),
-            ep("10.0.0.2:80", 0),
-            ep("10.0.0.3:80", 0),
-        ];
+        let endpoints = vec![ep("10.0.0.1:80", 0), ep("10.0.0.2:80", 0), ep("10.0.0.3:80", 0)];
         let pl = PriorityLevels::new(endpoints, &SimpleStrategy::RoundRobin, 140);
 
         let mut seen = HashSet::new();

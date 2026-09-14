@@ -3163,7 +3163,11 @@ async fn request_body_done_does_not_suppress_response_body() {
     drop(pipeline.execute_http_response(&mut ctx).await.unwrap());
 
     let mut resp_body = Some(Bytes::from_static(b"resp"));
-    drop(pipeline.execute_http_response_body(&mut ctx, &mut resp_body, true).unwrap());
+    drop(
+        pipeline
+            .execute_http_response_body(&mut ctx, &mut resp_body, true)
+            .unwrap(),
+    );
 
     assert_eq!(
         responses.lock().unwrap().clone(),

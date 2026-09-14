@@ -564,8 +564,7 @@ fn record_passive_health(pipeline: &FilterPipeline, error: Option<&pingora_core:
     // as failures (Internal/Unset are kept because a real endpoint failure
     // is not always tagged Upstream, and missing one is worse here than an
     // occasional false positive).
-    let is_downstream_error =
-        error.is_some_and(|e| matches!(e.esource(), pingora_core::ErrorSource::Downstream));
+    let is_downstream_error = error.is_some_and(|e| matches!(e.esource(), pingora_core::ErrorSource::Downstream));
     if is_downstream_error && ctx.upstream_response_status.is_none() {
         return;
     }

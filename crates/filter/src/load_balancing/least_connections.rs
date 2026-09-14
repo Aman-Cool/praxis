@@ -116,9 +116,7 @@ impl LeastConnections {
 
         if let Some(state) = health
             && let Some((addr, load)) = self.select_from_candidates(
-                |ep| {
-                    state.is_address_healthy(&ep.address) && !is_excluded(&ep.address, exclude)
-                },
+                |ep| state.is_address_healthy(&ep.address) && !is_excluded(&ep.address, exclude),
                 offset,
             )
         {

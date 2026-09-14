@@ -75,7 +75,11 @@ pub fn build_server_config(tls: &ListenerTls, advertise_http_alpn: bool) -> Resu
         builder.with_cert_resolver(Arc::new(resolver))
     };
 
-    config.alpn_protocols = if advertise_http_alpn { alpn_protocols() } else { Vec::new() };
+    config.alpn_protocols = if advertise_http_alpn {
+        alpn_protocols()
+    } else {
+        Vec::new()
+    };
     Ok(Arc::new(config))
 }
 
@@ -139,7 +143,11 @@ pub fn build_reloadable_server_config(
     let cert_handle = resolver.arc();
 
     let mut config = builder.with_cert_resolver(Arc::new(resolver));
-    config.alpn_protocols = if advertise_http_alpn { alpn_protocols() } else { Vec::new() };
+    config.alpn_protocols = if advertise_http_alpn {
+        alpn_protocols()
+    } else {
+        Vec::new()
+    };
 
     Ok(ReloadableServerConfig {
         config: Arc::new(config),

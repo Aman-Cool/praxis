@@ -1561,10 +1561,8 @@ mod tests {
         // able to hide a value from the policy engine: both lines are
         // combined so an equality check fails closed against the spoof.
         let mut req = crate::test_utils::make_request(http::Method::GET, "/");
-        req.headers.append(
-            http::header::HeaderName::from_static("x-role"),
-            "user".parse().unwrap(),
-        );
+        req.headers
+            .append(http::header::HeaderName::from_static("x-role"), "user".parse().unwrap());
         req.headers.append(
             http::header::HeaderName::from_static("x-role"),
             "admin".parse().unwrap(),

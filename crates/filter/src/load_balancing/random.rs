@@ -56,9 +56,8 @@ impl Random {
         // cumulative bucket. Collecting candidate SmallVecs heap-allocated
         // twice per request past 8 endpoints.
         if let Some(state) = health {
-            let healthy = |ep: &WeightedEndpoint| {
-                state.is_address_healthy(&ep.address) && !is_excluded(&ep.address, exclude)
-            };
+            let healthy =
+                |ep: &WeightedEndpoint| state.is_address_healthy(&ep.address) && !is_excluded(&ep.address, exclude);
             let (first, total) = survey(&self.endpoints, healthy);
             if let Some(first) = first {
                 if total > 0 {
@@ -166,11 +165,7 @@ mod tests {
 
     #[test]
     fn distributes_across_endpoints() {
-        let r = Random::new(vec![
-            ep("10.0.0.1:80", 1),
-            ep("10.0.0.2:80", 1),
-            ep("10.0.0.3:80", 1),
-        ]);
+        let r = Random::new(vec![ep("10.0.0.1:80", 1), ep("10.0.0.2:80", 1), ep("10.0.0.3:80", 1)]);
 
         let mut counts = std::collections::HashMap::new();
         for _ in 0..300 {

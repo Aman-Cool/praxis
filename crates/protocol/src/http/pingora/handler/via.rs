@@ -283,7 +283,8 @@ mod tests {
     fn append_request_via_replaces_when_any_line_non_utf8() {
         let mut req = pingora_http::RequestHeader::build("GET", b"/", None).unwrap();
         req.append_header("via", "1.0 a").unwrap();
-        req.append_header("via", HeaderValue::from_bytes(&[0x80, 0xFF]).unwrap()).unwrap();
+        req.append_header("via", HeaderValue::from_bytes(&[0x80, 0xFF]).unwrap())
+            .unwrap();
         append_request_via(&mut req, Version::HTTP_11);
         assert_eq!(
             req.headers.get("via").unwrap(),

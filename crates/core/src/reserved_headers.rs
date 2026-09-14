@@ -107,7 +107,8 @@ pub const HOP_BY_HOP_HEADERS: &[&str] = &[
 /// assert!(!is_connection_token_protected("x-app-state"));
 /// ```
 pub fn is_connection_token_protected(name: &str) -> bool {
-    name.get(..12).is_some_and(|prefix| prefix.eq_ignore_ascii_case("x-forwarded-"))
+    name.get(..12)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("x-forwarded-"))
         || name.eq_ignore_ascii_case("forwarded")
         || name.eq_ignore_ascii_case("host")
         || name.eq_ignore_ascii_case("content-length")

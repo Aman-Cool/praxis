@@ -524,7 +524,13 @@ mod tests {
             rec.removed.contains(&"x-app-state".to_owned()),
             "custom header should be stripped"
         );
-        for protected in ["x-forwarded-for", "forwarded", "x-praxis-route", "host", "content-length"] {
+        for protected in [
+            "x-forwarded-for",
+            "forwarded",
+            "x-praxis-route",
+            "host",
+            "content-length",
+        ] {
             assert!(
                 !rec.removed.iter().any(|h| h == protected),
                 "{protected} must not be strippable via a Connection token"

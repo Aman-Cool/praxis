@@ -69,9 +69,7 @@ impl ConsistentHash {
         let start = (fnv1a(key) as usize) % len;
 
         if let Some(state) = health
-            && let Some(addr) = self.probe(start, exclude, |ep| {
-                state.is_address_healthy(&ep.address)
-            })
+            && let Some(addr) = self.probe(start, exclude, |ep| state.is_address_healthy(&ep.address))
         {
             return Some(addr);
         }

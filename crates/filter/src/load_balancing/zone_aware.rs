@@ -6,10 +6,7 @@
 
 use std::sync::Arc;
 
-use praxis_core::{
-    config::SimpleStrategy,
-    health::ClusterHealthState,
-};
+use praxis_core::{config::SimpleStrategy, health::ClusterHealthState};
 
 use super::{
     endpoint::WeightedEndpoint,

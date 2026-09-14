@@ -253,11 +253,7 @@ mod tests {
 
     #[test]
     fn distributes_across_endpoints() {
-        let p2c = PowerOfTwoChoices::new(vec![
-            ep("10.0.0.1:80", 1),
-            ep("10.0.0.2:80", 1),
-            ep("10.0.0.3:80", 1),
-        ]);
+        let p2c = PowerOfTwoChoices::new(vec![ep("10.0.0.1:80", 1), ep("10.0.0.2:80", 1), ep("10.0.0.3:80", 1)]);
 
         for _ in 0..30 {
             let addr = p2c.select(None, &[]).unwrap();
@@ -353,10 +349,7 @@ mod tests {
 
     #[test]
     fn concurrent_select_and_release() {
-        let p2c = Arc::new(PowerOfTwoChoices::new(vec![
-            ep("10.0.0.1:80", 1),
-            ep("10.0.0.2:80", 1),
-        ]));
+        let p2c = Arc::new(PowerOfTwoChoices::new(vec![ep("10.0.0.1:80", 1), ep("10.0.0.2:80", 1)]));
 
         let handles: Vec<_> = std::iter::repeat_with(|| {
             let p = Arc::clone(&p2c);
