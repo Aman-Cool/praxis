@@ -36,6 +36,7 @@ pub(crate) fn build_tls_settings(
     tls: &ListenerTls,
     address: &str,
     context_label: &str,
+    advertise_http_alpn: bool,
 ) -> Result<(TlsSettings, Option<watch::Sender<bool>>), ProxyError> {
     macro_rules! tls_err {
         ($e:expr) => {{
@@ -47,7 +48,7 @@ pub(crate) fn build_tls_settings(
     #[cfg(feature = "config-reload")]
     if tls.is_hot_reload() {
         tracing::debug!(address, context_label, "building TLS ServerConfig with hot-reload");
-        let result = praxis_tls::setup::build_reloadable_server_config(tls)
+        let result = praxis_tls::setup::build_reloadable_server_config(tls, advertise_http_alpn)
             .map_err(|e| ProxyError::Config(format!("TLS hot-reload for {address}: {e}")))?;
 
         let pair =
@@ -86,7 +87,7 @@ pub(crate) fn build_tls_settings(
     }
 
     tracing::debug!(address, context_label, "building TLS ServerConfig");
-    let server_config = praxis_tls::setup::build_server_config(tls).map_err(|e| tls_err!(e))?;
+    let server_config = praxis_tls::setup::build_server_config(tls, advertise_http_alpn).map_err(|e| tls_err!(e))?;
     let settings = TlsSettings::with_server_config(server_config).map_err(|e| tls_err!(e))?;
     Ok((settings, None))
 }
