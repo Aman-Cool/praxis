@@ -86,15 +86,12 @@ fn combined_via(headers: &http::HeaderMap, entry: &str) -> Option<String> {
 /// the header is replaced outright to avoid a malformed value.
 pub(crate) fn append_request_via(req: &mut pingora_http::RequestHeader, upstream_version: Version) {
     let entry = via_value(upstream_version);
-    match combined_via(&req.headers, entry) {
-        Some(combined) => {
-            debug!(via = %combined, "appending to existing request Via");
-            let _insert = req.insert_header("via", combined);
-        },
-        None => {
-            debug!(via = %entry, "adding request Via header");
-            let _insert = req.insert_header("via", via_header_value(entry));
-        },
+    if let Some(combined) = combined_via(&req.headers, entry) {
+        debug!(via = %combined, "appending to existing request Via");
+        let _insert = req.insert_header("via", combined);
+    } else {
+        debug!(via = %entry, "adding request Via header");
+        let _insert = req.insert_header("via", via_header_value(entry));
     }
 }
 
@@ -113,15 +110,12 @@ pub(crate) fn append_request_via(req: &mut pingora_http::RequestHeader, upstream
 /// [RFC 9110 Section 7.6.3]: https://datatracker.ietf.org/doc/html/rfc9110#section-7.6.3
 pub(crate) fn append_response_via(resp: &mut pingora_http::ResponseHeader, upstream_version: Version) {
     let entry = via_value(upstream_version);
-    match combined_via(&resp.headers, entry) {
-        Some(combined) => {
-            debug!(via = %combined, "appending to existing response Via");
-            let _insert = resp.insert_header("via", combined);
-        },
-        None => {
-            debug!(via = %entry, "adding response Via header");
-            let _insert = resp.insert_header("via", via_header_value(entry));
-        },
+    if let Some(combined) = combined_via(&resp.headers, entry) {
+        debug!(via = %combined, "appending to existing response Via");
+        let _insert = resp.insert_header("via", combined);
+    } else {
+        debug!(via = %entry, "adding response Via header");
+        let _insert = resp.insert_header("via", via_header_value(entry));
     }
 }
 

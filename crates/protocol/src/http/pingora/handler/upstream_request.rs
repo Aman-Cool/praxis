@@ -1150,8 +1150,8 @@ mod tests {
         )]));
         reseed_retry_body(&mut ctx);
         assert_eq!(
-            ctx.pre_read_body.as_ref().and_then(|c| c.front()).map(|b| b.as_ref()),
-            Some(b"live-body".as_ref()),
+            ctx.pre_read_body.as_ref().and_then(|c| c.front()),
+            Some(&bytes::Bytes::from_static(b"live-body")),
             "the first attempt must not overwrite the live pre_read_body"
         );
 
@@ -1160,8 +1160,8 @@ mod tests {
         ctx.pre_read_body = None;
         reseed_retry_body(&mut ctx);
         assert_eq!(
-            ctx.pre_read_body.as_ref().and_then(|c| c.front()).map(|b| b.as_ref()),
-            Some(b"mutated-body".as_ref()),
+            ctx.pre_read_body.as_ref().and_then(|c| c.front()),
+            Some(&bytes::Bytes::from_static(b"mutated-body")),
             "a retry must replay the retained mutated body"
         );
 
