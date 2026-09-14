@@ -577,7 +577,7 @@ mod tests {
     #[test]
     fn apply_rewritten_path_noop_when_none() {
         let mut req = RequestHeader::build("GET", b"/keep", None).unwrap();
-        let mut ctx = PingoraRequestCtx::default();
+        let ctx = PingoraRequestCtx::default();
 
         apply_rewritten_path(&mut req, &ctx).unwrap();
 
