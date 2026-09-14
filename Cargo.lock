@@ -112,7 +112,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -123,7 +123,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -231,6 +231,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "async-channel"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "924ed96dd52d1b75e9c1a3e6275715fd320f5f9439fb5a4a11fa51f4221158d2"
+dependencies = [
+ "concurrent-queue",
+ "event-listener-strategy",
+ "futures-core",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -797,6 +809,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "concurrent-queue"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1260,7 +1281,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1584,8 +1605,6 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
 dependencies = [
- "allocator-api2",
- "equivalent",
  "foldhash",
 ]
 
@@ -2251,18 +2270,12 @@ dependencies = [
 
 [[package]]
 name = "lru"
-version = "0.16.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f66e8d5d03f609abc3a39e6f08e4164ebf1447a732906d39eb9b99b7919ef39"
-dependencies = [
- "hashbrown 0.16.1",
-]
-
-[[package]]
-name = "lru"
 version = "0.18.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff9840bcc50b71349309900da0ce7279aa336ae71d73250b07998932c7d97c25"
+dependencies = [
+ "hashbrown 0.17.1",
+]
 
 [[package]]
 name = "matchers"
@@ -2498,7 +2511,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3535,11 +3548,12 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quixotic-plecostomus-cache"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2170cdcd123450231d0828912839eef227bb1d0055f005cccbc8c4879c505fda"
+checksum = "350fc5dba8abe580c7e087282174e5a2ecc686b525e8ff57cdb60496c5127ed9"
 dependencies = [
  "ahash",
+ "arrayvec 0.7.8",
  "async-trait",
  "blake2",
  "bstr",
@@ -3550,7 +3564,7 @@ dependencies = [
  "httpdate",
  "indexmap 2.14.2",
  "log",
- "lru 0.16.4",
+ "lru",
  "once_cell",
  "parking_lot",
  "quixotic-plecostomus-core",
@@ -3570,9 +3584,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-core"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10afcc507d2cb09b581d71f2ed501bbd9f68117d3e5dcdb280bb486049f019e1"
+checksum = "6715c22a92bc566fd9384790c2d1abfb9354de8f1a0dcf1f7256e0c3a2d6ad82"
 dependencies = [
  "ahash",
  "async-trait",
@@ -3623,15 +3637,15 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-error"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "babdfdca7e2daabbef281e3d0a6b9eac958afcdb28c4c4c4a882384690c7d3cc"
+checksum = "2f394b14325417dad92d3ca0c11637edae3e322734aa0bb3a59e093e824d0c35"
 
 [[package]]
 name = "quixotic-plecostomus-header-serde"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c18c8ab3e8b558bfd8fb7c9953869fedc07b5a0acf4a9fc547f4dbfb21bcd286"
+checksum = "6d482a06a3059883a5213569226416716154ee4e2f7b4be07141ce6ebab1e02a"
 dependencies = [
  "bytes",
  "http",
@@ -3645,9 +3659,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-http"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f9a488e14da09575fa4b108cc8ee31385692c5f73700ec88ddd0438dc2cf092"
+checksum = "ee6000b6961244ba2ac0a44ded3cb32d27bd59b4f6383538ea46b0d8b4cc31f6"
 dependencies = [
  "bytes",
  "http",
@@ -3656,27 +3670,32 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-lru"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace25e7acff2509609f603331204eaf416a62d92233785e7a0ad58d91a328dba"
+checksum = "c73254f0b48aa956769c2f76f6464774fbf13f0b27cbbf3b64b5f3e2960d261c"
 dependencies = [
+ "ahash",
  "arrayvec 0.7.8",
+ "async-channel",
+ "flurry",
  "hashbrown 0.17.1",
+ "log",
  "parking_lot",
  "rand 0.10.2",
+ "tokio",
 ]
 
 [[package]]
 name = "quixotic-plecostomus-pool"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c3a8ab05fe009d7ef2cc7236dee12904bd60efa2a5a2cb5a8b0955b08f3baa4"
+checksum = "65257b7f2cd8737d5addc2568048c3b61320c93f682f02c70fd3e5e7a6ac4a8f"
 dependencies = [
  "crossbeam-queue",
  "dashmap",
  "futures",
  "log",
- "lru 0.16.4",
+ "lru",
  "parking_lot",
  "quixotic-plecostomus-timeout",
  "tokio",
@@ -3684,9 +3703,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-proxy"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e9987508338ed682178a703bfc9ce6c050112fae1eb6687d2b3f38544f77d35"
+checksum = "1d3d03cdaafe8dee28aca8dcb804a7523a158bab23c216bac54cf652df20c545"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3707,9 +3726,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-runtime"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b2906b043f5511fff32636a80ff45624a68675f3cc42ffd5b5b7acb691ca29a"
+checksum = "d4de1f696783c23ca4a544035d5a1bc33c852808c69c8f6b02934135b0573af1"
 dependencies = [
  "log",
  "once_cell",
@@ -3721,9 +3740,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-rustls"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2359930255ece5446d6f62246f4781870d8f2230df3e5abfb764f1fd69490ec"
+checksum = "046ef4f875f36b6a1279d20e09a1ee40361df9d079703864832d4dba52a2c40d"
 dependencies = [
  "log",
  "no_debug",
@@ -3738,9 +3757,9 @@ dependencies = [
 
 [[package]]
 name = "quixotic-plecostomus-timeout"
-version = "0.8.4"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ef2ccca7162912fc19e1e1aa4902793c084995bc0bc0acd3fed1e89d17dd0ad"
+checksum = "7da84d54def37451d39e973d9c09d33d279ce955b26f6827d538485cd940cd66"
 dependencies = [
  "once_cell",
  "parking_lot",
@@ -3995,7 +4014,7 @@ dependencies = [
  "globset",
  "indexmap 2.14.2",
  "lazy_static",
- "lru 0.18.4",
+ "lru",
  "msvc_spectre_libs",
  "num-bigint 0.5.1",
  "num-traits",
@@ -4110,7 +4129,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4544,7 +4563,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4569,7 +4588,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "psm",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4685,10 +4704,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4697,7 +4716,7 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8c27177b12a6399ffc08b98f76f7c9a1f4fe9fc967c784c5a071fa8d93cf7e1"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5420,7 +5439,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

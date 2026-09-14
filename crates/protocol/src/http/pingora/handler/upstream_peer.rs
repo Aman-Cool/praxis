@@ -14,7 +14,10 @@ use std::{
     time::Instant,
 };
 
-use pingora_core::{Result, upstreams::peer::HttpPeer};
+use pingora_core::{
+    Result,
+    upstreams::peer::{HttpPeer, HttpUpstreamRequestPolicy},
+};
 use praxis_core::connectivity::{Upstream, peer as peer_utils};
 use tracing::debug;
 
@@ -228,6 +231,14 @@ async fn build_peer(upstream: &Upstream, allow_private: bool) -> Result<Box<Http
         });
 
     let mut peer = HttpPeer::new(addr, tls_enabled, sni);
+    // Pingora 0.9.0 sanitizes the upstream request (removing headers a client
+    // nominated in `Connection`) *before* our `upstream_request_filter` runs, and
+    // its protected set omits RFC 7239 `Forwarded` — so a client sending
+    // `Connection: forwarded` would strip the proxy-injected Forwarded header.
+    // `preserve()` disables that pass, keeping Praxis's own hop-by-hop and
+    // Connection-token stripping (which protects `forwarded`, `x-forwarded-*`,
+    // `host`, ...) as the sole authority, as it was before the 0.9.0 bump.
+    peer.options.http_upstream_request_policy = HttpUpstreamRequestPolicy::preserve();
     peer_utils::apply_connection_options(&mut peer, &upstream.connection);
 
     if let Some(tls) = &upstream.tls {
