@@ -24,8 +24,9 @@ use tokio::sync::watch;
 /// from TCP callers (e.g. `"HTTP"`, `"TCP"`).
 ///
 /// Returns the settings and an optional shutdown sender for the
-/// cert watcher. The caller must keep the sender alive; dropping
-/// it signals the watcher task to stop.
+/// cert watcher. The watcher runs for the process lifetime; the caller
+/// keeps the sender to stop it early via `send(true)` (dropping it does
+/// not stop the watcher).
 ///
 /// [`TlsSettings`]: pingora_core::listeners::tls::TlsSettings
 /// [`build_server_config`]: praxis_tls::setup::build_server_config

@@ -222,10 +222,11 @@ async fn watch_loop(
                     },
                     ShutdownAction::KeepPolling => {},
                     ShutdownAction::StopPolling => {
-                        // The shutdown sender was dropped (the documented
-                        // "drop the sender to keep it running" pattern). Stop
-                        // polling this arm so select! parks on rx.recv()
-                        // instead of spinning on a perpetually-ready Err.
+                        // The shutdown sender was dropped. The watcher runs for
+                        // the process lifetime, so stop polling this arm (parking
+                        // select! on rx.recv()) rather than spinning on a
+                        // perpetually-ready Err; early termination is only via
+                        // send(true), which keeps a live sender.
                         watch_shutdown = false;
                     },
                 }

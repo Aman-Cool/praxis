@@ -70,9 +70,9 @@ pub use with_body::PingoraHttpHandler;
 /// Load an HTTP handler for a single listener.
 ///
 /// Any TLS certificate watcher shutdown senders are appended to
-/// `cert_watcher_shutdowns`. The caller must keep this `Vec` alive
-/// until server shutdown; dropping the senders signals the watcher
-/// tasks to stop.
+/// `cert_watcher_shutdowns`. The watcher tasks run for the process
+/// lifetime; the caller keeps this `Vec` to stop them early via
+/// `send(true)` (dropping the senders does not stop them).
 ///
 /// ```ignore
 /// use std::sync::Arc;
