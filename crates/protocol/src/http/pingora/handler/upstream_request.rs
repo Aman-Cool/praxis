@@ -1139,17 +1139,20 @@ mod tests {
 
     #[test]
     fn reseed_retry_body_restores_mutated_body_on_retry_only() {
-        let mutated = std::collections::VecDeque::from([bytes::Bytes::from_static(b"mutated-body")]);
-
-        // First attempt: pre_read_body is still populated, so re-seeding is a no-op.
+        // First attempt: pre_read_body still holds the live body, so re-seeding
+        // must leave it untouched rather than overwrite it with the retained copy.
         let mut ctx = PingoraRequestCtx::default();
-        ctx.pre_read_body = Some(mutated.clone());
-        ctx.retained_pre_read_body = Some(mutated.clone());
+        ctx.pre_read_body = Some(std::collections::VecDeque::from([bytes::Bytes::from_static(
+            b"live-body",
+        )]));
+        ctx.retained_pre_read_body = Some(std::collections::VecDeque::from([bytes::Bytes::from_static(
+            b"mutated-body",
+        )]));
         reseed_retry_body(&mut ctx);
         assert_eq!(
-            ctx.pre_read_body.as_ref().map(std::collections::VecDeque::len),
-            Some(1),
-            "the first attempt must not disturb the live pre_read_body"
+            ctx.pre_read_body.as_ref().and_then(|c| c.front()).map(|b| b.as_ref()),
+            Some(b"live-body".as_ref()),
+            "the first attempt must not overwrite the live pre_read_body"
         );
 
         // Retry: pre_read_body drained, so it is restored from the retained copy
@@ -1162,9 +1165,19 @@ mod tests {
             "a retry must replay the retained mutated body"
         );
 
+        // A writer that produced an empty body retains an empty deque; a retry
+        // restores Some(empty) so the drain yields no chunk under Content-Length 0.
+        let mut empty = PingoraRequestCtx::default();
+        empty.retained_pre_read_body = Some(std::collections::VecDeque::new());
+        reseed_retry_body(&mut empty);
+        assert_eq!(
+            empty.pre_read_body.as_ref().map(std::collections::VecDeque::len),
+            Some(0),
+            "an empty retained body restores an empty pre_read_body"
+        );
+
         // No body writer ran (nothing retained): a drained pre_read_body stays None.
         let mut plain = PingoraRequestCtx::default();
-        plain.pre_read_body = None;
         plain.retained_pre_read_body = None;
         reseed_retry_body(&mut plain);
         assert!(
