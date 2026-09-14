@@ -77,6 +77,7 @@ continues serving with the old config.
 - Load balancer endpoints and weights
 - Rate limit and circuit breaker settings
 - Health check configuration
+- Log level overrides (`runtime.log_overrides`)
 
 **Requires restart (logged as warning):**
 
@@ -90,8 +91,8 @@ continues serving with the old config.
   config-level TLS changes are not)
 - Startup-only `runtime` settings (`threads`,
   `work_stealing`, `global_queue_interval`,
-  `log_overrides`, `max_connections`,
-  `max_memory_bytes`, `subrequest_pool_size`,
+  `max_connections`, `max_memory_bytes`,
+  `subrequest_pool_size`,
   `subrequest_max_connections`,
   `subrequest_circuit_breaker`, `upstream_ca_file`,
   `upstream_keepalive_pool_size`)
