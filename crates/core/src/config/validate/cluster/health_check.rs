@@ -360,6 +360,35 @@ mod tests {
     }
 
     #[test]
+    fn tls_cluster_with_http_probe_is_non_fatal() {
+        // A TLS cluster with a plaintext HTTP probe warns (the probe cannot
+        // handshake a TLS backend) but must not fail validation, so an existing
+        // deployment still boots. This guards the wiring: a future change that
+        // rejected the mismatch instead of warning would break this.
+        let yaml = r#"
+listeners:
+  - name: web
+    address: "0.0.0.0:80"
+    filter_chains: [main]
+filter_chains:
+  - name: main
+    filters:
+      - filter: static_response
+        status: 200
+clusters:
+  - name: "backend"
+    endpoints: ["10.0.0.1:443"]
+    tls:
+      sni: "api.example.com"
+    health_check:
+      type: http
+      interval_ms: 5000
+      timeout_ms: 2000
+"#;
+        Config::from_yaml(yaml).expect("tls + http health check must validate (warn, not error)");
+    }
+
+    #[test]
     fn accept_valid_http_health_check() {
         let yaml = r#"
 listeners:
