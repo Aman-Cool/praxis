@@ -375,6 +375,10 @@ impl CircuitBreaker {
     }
 
     /// In-flight slot count (probes plus admitted requests), for tests.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     #[cfg(test)]
     #[expect(clippy::expect_used, reason = "poisoned mutex is unrecoverable")]
     pub fn in_flight(&self) -> u32 {
