@@ -52,9 +52,28 @@ pub(crate) fn load_certified_key(pair: &CertKeyPair) -> Result<CertifiedKey, Tls
             detail: format!("unsupported private key type: {e}"),
         })?;
     let certified = CertifiedKey::new(certs, signing_key);
-    certified.keys_match().map_err(|e| TlsError::FileLoadError {
-        path: pair.cert_path.clone(),
-        detail: format!("certificate and private key do not match: {e}"),
+    certified.keys_match().map_err(|e| {
+        // Distinguish a genuine key mismatch from an unparseable/unsupported
+        // certificate: keys_match also fails when the certificate cannot be
+        // parsed (InvalidCertificate) or the signing key cannot expose its
+        // public key (Unknown), and reporting those as "do not match" sends
+        // operators chasing the wrong problem.
+        let detail = match &e {
+            rustls::Error::InconsistentKeys(rustls::InconsistentKeys::KeyMismatch) => {
+                format!("certificate and private key do not match: {e}")
+            },
+            rustls::Error::InconsistentKeys(rustls::InconsistentKeys::Unknown) => {
+                format!(
+                    "could not verify the certificate against the private key \
+                     (the signing key cannot expose its public key): {e}"
+                )
+            },
+            _ => format!("failed to validate the certificate against the private key: {e}"),
+        };
+        TlsError::FileLoadError {
+            path: pair.cert_path.clone(),
+            detail,
+        }
     })?;
     Ok(certified)
 }
@@ -242,6 +261,32 @@ mod tests {
         assert!(
             err.to_string().contains("no certificates found"),
             "error should mention no certificates, got: {err}"
+        );
+    }
+
+    #[test]
+    fn unparseable_der_cert_is_not_reported_as_key_mismatch() {
+        // A well-formed PEM wrapper around non-DER bytes parses past the PEM
+        // layer and only fails at keys_match; the error must not claim a
+        // certificate/key mismatch, which would misdirect the operator.
+        let certs = gen_test_certs();
+        let dir = tempfile::TempDir::new().expect("tempdir");
+        let bad_cert = dir.path().join("bad-der.pem");
+        std::fs::write(
+            &bad_cert,
+            b"-----BEGIN CERTIFICATE-----\nbm90YWNlcnQ=\n-----END CERTIFICATE-----\n",
+        )
+        .expect("write cert");
+        let pair = CertKeyPair {
+            cert_path: bad_cert.to_str().expect("path").to_owned(),
+            default: false,
+            key_path: certs.key_path.to_str().expect("path").to_owned(),
+            server_names: Vec::new(),
+        };
+        let err = load_certified_key(&pair).expect_err("garbage DER cert should fail");
+        assert!(
+            !err.to_string().contains("do not match"),
+            "an unparseable certificate must not be reported as a key mismatch, got: {err}"
         );
     }
 
