@@ -126,6 +126,28 @@ async fn extracts_field_from_complete_json() {
 }
 
 #[tokio::test]
+async fn complete_json_in_non_final_chunk_defers_promotion() {
+    // A non-final chunk that is itself a complete JSON object must not
+    // promote: trailing bytes in a later chunk could override the field the
+    // backend parses. Extraction is deferred to the end-of-stream pass.
+    let filter = make_filter("model", "X-Model");
+    let req = crate::test_utils::make_request(http::Method::POST, "/v1/chat");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(br#"{"model":"cheap"}"#));
+    let action = filter.on_request_body(&mut ctx, &mut body, false).await.unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Continue),
+        "a complete-but-non-final chunk must not promote"
+    );
+    assert!(
+        ctx.extra_request_headers.is_empty(),
+        "promotion must be deferred to end-of-stream"
+    );
+}
+
+#[tokio::test]
 async fn extracts_multiple_fields_in_single_parse() {
     let filter = make_multi_filter(&[("model", "X-Model"), ("user_id", "X-User-Id")]);
     let req = crate::test_utils::make_request(http::Method::POST, "/v1/chat");
