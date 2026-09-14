@@ -189,7 +189,17 @@ impl PingoraAdminService {
 
     /// Build the `/ready` response status and body.
     fn ready_response(&self) -> (u16, String) {
-        compute_ready_response(self.health_registry.as_ref(), self.verbose)
+        // Resolve the health registry from the live pipelines (post-reload)
+        // rather than the startup snapshot, exactly as /api/stats does, so
+        // /ready reflects current endpoint health after a config reload
+        // instead of health frozen at the first reload.
+        let registry = match self.pipelines.as_ref() {
+            Some(state) => {
+                stats_admin::resolve_health_registry(self.health_registry.as_ref(), Some(state), &state.meta)
+            },
+            None => self.health_registry.clone(),
+        };
+        compute_ready_response(registry.as_ref(), self.verbose)
     }
 
     /// Dispatch `/api/*` admin routes when configured.
