@@ -215,6 +215,27 @@ pub(crate) fn apply_mutated_content_length(req: &mut RequestHeader, ctx: &Pingor
 }
 
 // -----------------------------------------------------------------------------
+// Retry Body Replay
+// -----------------------------------------------------------------------------
+
+/// Re-seed the mutated request body before a retry attempt replays it.
+///
+/// The first attempt forwards the post-filter body from `pre_read_body`, which
+/// drains as it is written. A retry replays the ORIGINAL body from Pingora's
+/// fixed retry buffer, but [`apply_mutated_content_length`] still stamps the
+/// mutated length; without re-seeding, the replayed body would not match its
+/// `Content-Length` (a request-smuggling gadget). Restore the retained mutated
+/// body so each replay matches the stamped length.
+///
+/// A no-op on the first attempt (`pre_read_body` is still populated) and when
+/// no body writer ran (`retained_pre_read_body` is `None`).
+pub(crate) fn reseed_retry_body(ctx: &mut PingoraRequestCtx) {
+    if ctx.pre_read_body.is_none() && ctx.retained_pre_read_body.is_some() {
+        ctx.pre_read_body = ctx.retained_pre_read_body.clone();
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------------
 
@@ -1113,6 +1134,42 @@ mod tests {
         assert_eq!(
             req.headers.get("content-length").and_then(|v| v.to_str().ok()),
             Some("1024")
+        );
+    }
+
+    #[test]
+    fn reseed_retry_body_restores_mutated_body_on_retry_only() {
+        let mutated = std::collections::VecDeque::from([bytes::Bytes::from_static(b"mutated-body")]);
+
+        // First attempt: pre_read_body is still populated, so re-seeding is a no-op.
+        let mut ctx = PingoraRequestCtx::default();
+        ctx.pre_read_body = Some(mutated.clone());
+        ctx.retained_pre_read_body = Some(mutated.clone());
+        reseed_retry_body(&mut ctx);
+        assert_eq!(
+            ctx.pre_read_body.as_ref().map(std::collections::VecDeque::len),
+            Some(1),
+            "the first attempt must not disturb the live pre_read_body"
+        );
+
+        // Retry: pre_read_body drained, so it is restored from the retained copy
+        // (matching the mutated Content-Length that gets re-stamped).
+        ctx.pre_read_body = None;
+        reseed_retry_body(&mut ctx);
+        assert_eq!(
+            ctx.pre_read_body.as_ref().and_then(|c| c.front()).map(|b| b.as_ref()),
+            Some(b"mutated-body".as_ref()),
+            "a retry must replay the retained mutated body"
+        );
+
+        // No body writer ran (nothing retained): a drained pre_read_body stays None.
+        let mut plain = PingoraRequestCtx::default();
+        plain.pre_read_body = None;
+        plain.retained_pre_read_body = None;
+        reseed_retry_body(&mut plain);
+        assert!(
+            plain.pre_read_body.is_none(),
+            "with no retained body, a retry must not fabricate one"
         );
     }
 

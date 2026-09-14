@@ -351,6 +351,10 @@ impl ProxyHttp for PingoraHttpHandler {
         upstream_request::apply_authority_override(upstream_request, ctx)?;
         upstream_request::apply_rewritten_path(upstream_request, ctx)?;
         upstream_request::apply_mutated_content_length(upstream_request, ctx);
+        // Runs once per attempt: on a retry, re-seed the retained mutated body
+        // so the replayed bytes match the re-stamped Content-Length above (a
+        // no-op on the first attempt and when no body writer ran).
+        upstream_request::reseed_retry_body(ctx);
         let client_ver = ctx.client_http_version.unwrap_or(http::Version::HTTP_11);
         via::append_request_via(upstream_request, client_ver);
         Ok(())

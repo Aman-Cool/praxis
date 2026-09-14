@@ -194,6 +194,16 @@ pub struct PingoraRequestCtx {
     /// Uses `VecDeque` so that draining from the front is O(1).
     pub pre_read_body: Option<VecDeque<Bytes>>,
 
+    /// Retained copy of the mutated pre-read body for retry replay.
+    ///
+    /// The first attempt drains `pre_read_body` as it forwards the mutated
+    /// body. A retry replays from Pingora's fixed retry buffer, which holds the
+    /// ORIGINAL (pre-mutation) bytes, while `apply_mutated_content_length`
+    /// re-stamps the mutated length. This retained copy re-seeds `pre_read_body`
+    /// on each retry so the replayed body matches the stamped Content-Length,
+    /// closing a request-smuggling mismatch. Set only when a body writer ran.
+    pub retained_pre_read_body: Option<VecDeque<Bytes>>,
+
     /// Buffer for request body accumulation in [`StreamBuffer`] mode.
     ///
     /// [`StreamBuffer`]: praxis_filter::BodyMode::StreamBuffer
@@ -570,6 +580,7 @@ impl Default for PingoraRequestCtx {
             _active_request: None,
             upstream_connect_start: None,
             pre_read_body: None,
+            retained_pre_read_body: None,
             request_body_buffer: None,
             request_body_bytes: 0,
             request_body_mode: BodyMode::Stream,
