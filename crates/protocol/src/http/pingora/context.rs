@@ -378,6 +378,7 @@ macro_rules! filter_context {
             response_body_mode: $ctx.response_body_mode,
             response_header: $response_header,
             response_headers_modified: false,
+            upstream_reached: $ctx.upstream_for_retry.is_some(),
             rewritten_path: $ctx.rewritten_path.take(),
             selected_endpoint_index: $ctx.selected_endpoint_index,
             attempted_endpoints: std::mem::take(&mut $ctx.attempted_endpoints),
