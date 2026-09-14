@@ -360,10 +360,14 @@ impl CircuitBreaker {
     ///
     /// Panics if the internal mutex is poisoned.
     #[expect(clippy::expect_used, reason = "poisoned mutex is unrecoverable")]
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "takes the token by value like record_success/record_failure; a released token is single-use"
+    )]
     pub fn release(&self, token: CircuitToken) {
         // Consume the token so it can never be recorded after release; the
         // generation is irrelevant here because release updates no stats.
-        let CircuitToken { generation: _ } = token;
+        let CircuitToken { .. } = token;
         let mut inner = self.inner.lock().expect("circuit breaker lock poisoned");
         inner.release_token();
         self.store_state_cache(&inner);
@@ -575,7 +579,7 @@ impl CircuitBreakerRegistry {
 
 #[cfg(test)]
 #[expect(clippy::allow_attributes, reason = "blanket test suppressions")]
-#[allow(clippy::unwrap_used, clippy::expect_used, reason = "tests")]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "tests")]
 mod tests {
     use super::*;
 

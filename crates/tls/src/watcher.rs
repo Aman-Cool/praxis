@@ -212,7 +212,10 @@ async fn watch_loop(
                 }
             }
             result = shutdown.changed(), if watch_shutdown => {
-                match on_shutdown_change(result.is_ok(), *shutdown.borrow()) {
+                // Copy the flag out of the borrow guard before the match so the
+                // temporary Ref does not live across the arms.
+                let requested = *shutdown.borrow();
+                match on_shutdown_change(result.is_ok(), requested) {
                     ShutdownAction::Shutdown => {
                         tracing::info!("certificate file watcher shutting down");
                         return;

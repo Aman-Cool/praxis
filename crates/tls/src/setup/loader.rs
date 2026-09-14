@@ -52,30 +52,34 @@ pub(crate) fn load_certified_key(pair: &CertKeyPair) -> Result<CertifiedKey, Tls
             detail: format!("unsupported private key type: {e}"),
         })?;
     let certified = CertifiedKey::new(certs, signing_key);
-    certified.keys_match().map_err(|e| {
-        // Distinguish a genuine key mismatch from an unparseable/unsupported
-        // certificate: keys_match also fails when the certificate cannot be
-        // parsed (InvalidCertificate) or the signing key cannot expose its
-        // public key (Unknown), and reporting those as "do not match" sends
-        // operators chasing the wrong problem.
-        let detail = match &e {
-            rustls::Error::InconsistentKeys(rustls::InconsistentKeys::KeyMismatch) => {
-                format!("certificate and private key do not match: {e}")
-            },
-            rustls::Error::InconsistentKeys(rustls::InconsistentKeys::Unknown) => {
-                format!(
-                    "could not verify the certificate against the private key \
-                     (the signing key cannot expose its public key): {e}"
-                )
-            },
-            _ => format!("failed to validate the certificate against the private key: {e}"),
-        };
-        TlsError::FileLoadError {
-            path: pair.cert_path.clone(),
-            detail,
-        }
+    certified.keys_match().map_err(|e| TlsError::FileLoadError {
+        path: pair.cert_path.clone(),
+        detail: keys_match_error_detail(&e),
     })?;
     Ok(certified)
+}
+
+/// Describe a `keys_match` failure without misreporting a parse/exposure error.
+///
+/// `keys_match` also fails when the certificate cannot be parsed
+/// (`InvalidCertificate`) or the signing key cannot expose its public key
+/// (`Unknown`); reporting those as "do not match" sends operators chasing the
+/// wrong problem.
+fn keys_match_error_detail(e: &rustls::Error) -> String {
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "rustls::Error is non_exhaustive; only the two InconsistentKeys cases are special-cased"
+    )]
+    match e {
+        rustls::Error::InconsistentKeys(rustls::InconsistentKeys::KeyMismatch) => {
+            format!("certificate and private key do not match: {e}")
+        },
+        rustls::Error::InconsistentKeys(rustls::InconsistentKeys::Unknown) => format!(
+            "could not verify the certificate against the private key \
+             (the signing key cannot expose its public key): {e}"
+        ),
+        _ => format!("failed to validate the certificate against the private key: {e}"),
+    }
 }
 
 /// Load certificate chain and private key from PEM files.
