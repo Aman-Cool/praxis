@@ -543,6 +543,15 @@ fn record_passive_health(pipeline: &FilterPipeline, error: Option<&pingora_core:
         return;
     };
 
+    // A request that never reached the upstream (rejected or aborted before
+    // any upstream contact) has neither a response status nor an error, so it
+    // carries no signal about the endpoint. Skip it: otherwise a filter that
+    // rejects after endpoint selection would record a spurious success and
+    // reset a real failure streak.
+    if error.is_none() && ctx.upstream_response_status.is_none() {
+        return;
+    }
+
     // Classify the observation by the error's origin. A client-sourced
     // (Downstream) error carries no signal about the endpoint, so when it
     // arrives without an upstream response we skip the observation
@@ -1188,6 +1197,28 @@ mod tests {
         assert!(
             !entry.endpoints()[0].is_healthy(),
             "an upstream error at unhealthy-threshold 1 must mark the endpoint unhealthy"
+        );
+    }
+
+    #[test]
+    fn passive_health_no_upstream_signal_is_skipped() {
+        // A request rejected after endpoint selection but before any upstream
+        // contact (no error, no upstream status) must not record a passive
+        // observation; recording a success would reset a real failure streak.
+        let (pipeline, ctx) = make_passive_scenario(Some(2), Some(1));
+        let mut upstream_err = make_error();
+        upstream_err.as_up();
+
+        record_passive_health(&pipeline, Some(&upstream_err), &ctx);
+        // No error and no upstream status: never reached the upstream, skipped.
+        record_passive_health(&pipeline, None, &ctx);
+        record_passive_health(&pipeline, Some(&upstream_err), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            !entry.endpoints()[0].is_healthy(),
+            "a request that never reached the upstream must not reset the failure streak"
         );
     }
 
