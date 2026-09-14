@@ -543,7 +543,22 @@ fn record_passive_health(pipeline: &FilterPipeline, error: Option<&pingora_core:
         return;
     };
 
-    let is_failure = error.is_some() || ctx.upstream_response_status.is_some_and(|s| s >= 500);
+    // Classify the observation by the error's origin. A client-sourced
+    // (Downstream) error carries no signal about the endpoint, so when it
+    // arrives without an upstream response we skip the observation
+    // entirely: recording a failure would eject a healthy upstream, and
+    // recording a success would clear a real failure streak and mask a
+    // failing one. Upstream/Internal/Unset errors and 5xx responses count
+    // as failures (Internal/Unset are kept because a real endpoint failure
+    // is not always tagged Upstream, and missing one is worse here than an
+    // occasional false positive).
+    let is_downstream_error =
+        error.is_some_and(|e| matches!(e.esource(), pingora_core::ErrorSource::Downstream));
+    if is_downstream_error && ctx.upstream_response_status.is_none() {
+        return;
+    }
+    let is_failure =
+        ctx.upstream_response_status.is_some_and(|s| s >= 500) || (error.is_some() && !is_downstream_error);
     apply_passive_threshold(health, idx, cluster_name, is_failure);
 }
 
@@ -1118,6 +1133,61 @@ mod tests {
         assert!(
             entry.endpoints()[0].is_healthy(),
             "single failure should not yet mark unhealthy (threshold=3)"
+        );
+    }
+
+    #[test]
+    fn passive_health_downstream_error_is_not_failure() {
+        // A client-sourced (Downstream) error must not be charged
+        // against a healthy endpoint even at an unhealthy-threshold of 1.
+        let (pipeline, ctx) = make_passive_scenario(Some(1), Some(1));
+        let error = make_error().into_down();
+        record_passive_health(&pipeline, Some(&error), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            entry.endpoints()[0].is_healthy(),
+            "a downstream/client error must not mark the endpoint unhealthy"
+        );
+    }
+
+    #[test]
+    fn passive_health_downstream_error_does_not_reset_failure_streak() {
+        // A client disconnect between two genuine upstream failures must
+        // not clear the endpoint's failure streak (which recording it as a
+        // success would): the endpoint must still be ejected on the second
+        // real failure.
+        let (pipeline, ctx) = make_passive_scenario(Some(2), Some(1));
+        let mut upstream_err = make_error();
+        upstream_err.as_up();
+        let downstream_err = make_error().into_down();
+
+        record_passive_health(&pipeline, Some(&upstream_err), &ctx);
+        record_passive_health(&pipeline, Some(&downstream_err), &ctx);
+        record_passive_health(&pipeline, Some(&upstream_err), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            !entry.endpoints()[0].is_healthy(),
+            "two upstream failures must eject the endpoint even with an interleaved client error"
+        );
+    }
+
+    #[test]
+    fn passive_health_upstream_error_is_failure() {
+        // An upstream-sourced error still counts as an endpoint failure.
+        let (pipeline, ctx) = make_passive_scenario(Some(1), Some(1));
+        let mut error = make_error();
+        error.as_up();
+        record_passive_health(&pipeline, Some(&error), &ctx);
+
+        let registry = pipeline.health_registry().unwrap();
+        let entry = registry.get("test-cluster").unwrap();
+        assert!(
+            !entry.endpoints()[0].is_healthy(),
+            "an upstream error at unhealthy-threshold 1 must mark the endpoint unhealthy"
         );
     }
 
