@@ -311,6 +311,28 @@ fn parse_flexible_octet(s: &str) -> Option<u8> {
     s.parse::<u8>().ok()
 }
 
+/// Warn when a cluster terminates TLS but is health-checked with a plaintext
+/// HTTP probe: the probe connects in plaintext and can never complete a TLS
+/// handshake against a TLS backend, so the endpoint would be marked unhealthy
+/// forever. A `tcp` probe (connect-only) works against a TLS backend. This is
+/// a warning, not an error, so an existing deployment still boots.
+pub(super) fn warn_tls_http_probe_mismatch(cluster: &Cluster) {
+    if let Some(hc) = &cluster.health_check
+        && tls_http_probe_mismatch(cluster.tls.is_some(), &hc.check_type)
+    {
+        warn!(
+            cluster = %cluster.name,
+            "cluster has tls configured but a plaintext http health check; the probe cannot reach \
+             a TLS backend and the endpoint will be marked unhealthy. Use health_check.type: tcp."
+        );
+    }
+}
+
+/// Whether a TLS cluster is health-checked with a plaintext HTTP probe.
+fn tls_http_probe_mismatch(has_tls: bool, check_type: &HealthCheckType) -> bool {
+    has_tls && matches!(check_type, HealthCheckType::Http)
+}
+
 // -----------------------------------------------------------------------------
 // Tests
 // -----------------------------------------------------------------------------
@@ -328,6 +350,14 @@ fn parse_flexible_octet(s: &str) -> Option<u8> {
 mod tests {
     use super::super::validate_clusters;
     use crate::config::{Cluster, Config, InsecureOptions};
+
+    #[test]
+    fn tls_http_probe_mismatch_flags_plaintext_http_on_tls_cluster() {
+        use crate::config::HealthCheckType;
+        assert!(super::tls_http_probe_mismatch(true, &HealthCheckType::Http));
+        assert!(!super::tls_http_probe_mismatch(true, &HealthCheckType::Tcp));
+        assert!(!super::tls_http_probe_mismatch(false, &HealthCheckType::Http));
+    }
 
     #[test]
     fn accept_valid_http_health_check() {
