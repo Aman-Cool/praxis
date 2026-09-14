@@ -543,12 +543,15 @@ fn record_passive_health(pipeline: &FilterPipeline, error: Option<&pingora_core:
         return;
     };
 
-    // A request that never reached the upstream (rejected or aborted before
-    // any upstream contact) has neither a response status nor an error, so it
-    // carries no signal about the endpoint. Skip it: otherwise a filter that
-    // rejects after endpoint selection would record a spurious success and
-    // reset a real failure streak.
-    if error.is_none() && ctx.upstream_response_status.is_none() {
+    // A request that never contacted the upstream carries no signal about the
+    // endpoint, so skip it. upstream_for_retry is set only at peer selection
+    // (upstream_peer) and is reset per request, so it is None for a filter
+    // reject or terminal response after endpoint selection (which would
+    // otherwise record a spurious success against the untouched endpoint and
+    // reset a real failure streak) and for a proxy-generated terminal
+    // response (whose upstream_response_status is set even though no upstream
+    // was contacted). Genuine connect failures keep it Some.
+    if ctx.upstream_for_retry.is_none() {
         return;
     }
 
@@ -1201,24 +1204,38 @@ mod tests {
     }
 
     #[test]
-    fn passive_health_no_upstream_signal_is_skipped() {
-        // A request rejected after endpoint selection but before any upstream
-        // contact (no error, no upstream status) must not record a passive
-        // observation; recording a success would reset a real failure streak.
-        let (pipeline, ctx) = make_passive_scenario(Some(2), Some(1));
+    fn passive_health_skips_observations_without_upstream_contact() {
+        // A request that never contacted the upstream (a filter reject or a
+        // proxy-generated terminal response after endpoint selection) must not
+        // record a passive observation; recording a success would reset a real
+        // failure streak. upstream_for_retry is the "upstream contacted" signal.
+        let (pipeline, mut ctx) = make_passive_scenario(Some(2), Some(1));
+        let contacted = ctx.upstream_for_retry.clone();
         let mut upstream_err = make_error();
         upstream_err.as_up();
 
+        // Contacted: a genuine upstream failure.
         record_passive_health(&pipeline, Some(&upstream_err), &ctx);
-        // No error and no upstream status: never reached the upstream, skipped.
+
+        // Filter reject after selection: no contact, no status -> skipped.
+        ctx.upstream_for_retry = None;
         record_passive_health(&pipeline, None, &ctx);
+
+        // Proxy-generated terminal response: a status is set but the upstream
+        // was never contacted -> also skipped.
+        ctx.upstream_response_status = Some(200);
+        record_passive_health(&pipeline, None, &ctx);
+        ctx.upstream_response_status = None;
+
+        // Contacted again: the second genuine failure ejects the endpoint.
+        ctx.upstream_for_retry = contacted;
         record_passive_health(&pipeline, Some(&upstream_err), &ctx);
 
         let registry = pipeline.health_registry().unwrap();
         let entry = registry.get("test-cluster").unwrap();
         assert!(
             !entry.endpoints()[0].is_healthy(),
-            "a request that never reached the upstream must not reset the failure streak"
+            "observations without upstream contact must not reset the failure streak"
         );
     }
 
@@ -2013,6 +2030,13 @@ mod tests {
         ctx.cluster = Some(Arc::from(cluster));
         ctx.selected_endpoint_index = Some(endpoint_idx);
         ctx.upstream_response_status = status;
+        // A passive-health observation implies the upstream was contacted.
+        ctx.upstream_for_retry = Some(Upstream {
+            address: Arc::from("10.0.0.1:80"),
+            authority: None,
+            connection: Arc::new(ConnectionOptions::default()),
+            tls: None,
+        });
         ctx
     }
 
