@@ -228,9 +228,9 @@ fn opportunistic_sweep_fires_after_half_ttl() {
     assert_eq!(store.len(), 0);
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Regression tests for review fixes
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// A cookie-mode cluster config for response-handling tests.
 fn cookie_cfg() -> Arc<ClusterSessionConfig> {

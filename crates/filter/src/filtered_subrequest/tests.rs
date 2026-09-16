@@ -9,9 +9,9 @@
 
 use http::HeaderMap;
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Rejection Conversion
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn local_rejection_becomes_transition_response() {
@@ -35,9 +35,9 @@ fn local_rejection_becomes_transition_response() {
     assert_eq!(response.body, bytes::Bytes::from_static(b"unavailable"));
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // classify_transport_failure
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn classify_admission_timeout_returns_503() {
@@ -107,9 +107,9 @@ fn classify_circuit_open_returns_503() {
     assert_eq!(kind, super::TransportFailure::CircuitOpen);
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // strip_reserved_headers
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn strip_reserved_empty_map() {
@@ -176,9 +176,9 @@ fn strip_reserved_no_dash_not_removed() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Body Limits
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn nested_body_limit_detects_oversized_buffer() {
@@ -242,9 +242,9 @@ fn streaming_transport_uses_only_listener_limit() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Header Sanitization
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn strip_request_framing_headers_removes_stale_lengths() {
@@ -382,9 +382,9 @@ fn destination_host_rejects_unencodable_address() {
     assert!(result.is_err(), "control characters in the Host value must error");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Header Mutation Helpers
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn request_header_mutations_remove_set_and_add() {
@@ -451,9 +451,9 @@ fn pre_read_mutations_apply_remove_set_and_add() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Sub-Filter Context
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 #[expect(
@@ -513,9 +513,9 @@ fn sub_filter_context_inherits_parent_runtime_resources() {
     assert_eq!(ctx.time_source.now(), Duration::from_secs(123));
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Peer Construction
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn build_peer_applies_tls_with_explicit_sni() {
@@ -574,9 +574,9 @@ async fn build_peer_rejects_hostname_resolving_to_private_address() {
         .expect("allow_private_upstreams must permit the same upstream");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Public callout entry point (run)
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[tokio::test]
 #[expect(clippy::large_futures, reason = "drives the full executor future in a test")]
@@ -723,9 +723,9 @@ async fn run_falls_back_to_next_staged_address_on_connection_refusal() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // StagedUpstream / StagedUpstreamFallback::from_prepared_target
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //
 // IP-literal URLs skip DNS, so these constructor tests are hermetic. The
 // zero-address error branch in `StagedUpstream::from_prepared_target` (mod.rs)
@@ -824,9 +824,9 @@ async fn staged_upstream_fallback_from_prepared_target_captures_addresses() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Test Utilities: upstream re-pin regression harness
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // A malicious outbound-chain filter that rewrites `ctx.upstream` during the
 // request phase to redirect the callout at a different authority — the exact
@@ -938,9 +938,9 @@ async fn run_re_pins_staged_upstream_over_chain_filter_rewrite() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Test Utilities: session-store propagation recorder
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Records whether the sub-request filter context carried the session-store
 // registry at the moment each hook ran, so propagation of the parent pipeline's
@@ -1404,9 +1404,9 @@ async fn subrequest_unmatched_staged_credential_preserves_custom_host() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Test Utilities: streaming callout harness
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // A filter that selects a streaming sub-request response, so the executor
 // dispatches the outbound chain in streaming mode.
@@ -2199,9 +2199,9 @@ async fn streaming_response_body_context_inherits_parent_session_stores() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Test Utilities: classified buffered callout harness
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 // Records whether the response-header phase ran, so response-filter lifecycle
 // can be asserted even on a transport-overflow path where an empty response is

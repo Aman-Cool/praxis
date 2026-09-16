@@ -387,7 +387,7 @@ pub(crate) fn validate_put_request(module: Option<&str>, level: &str, duration_s
 }
 
 // -----------------------------------------------------------------------------
-// Helpers
+// Utilities
 // -----------------------------------------------------------------------------
 
 /// Map an optional module target to the overlay map key.

@@ -755,7 +755,9 @@ mod tests {
         assert!(!disp.contains("q=leak"), "Malformed Display leaked query: {disp}");
     }
 
-    // ===== Test Utilities =====
+    // -------------------------------------------------------------------------
+    // Test Utilities
+    // -------------------------------------------------------------------------
 
     use pingora_core::upstreams::peer::{Peer as _, Scheme};
 
@@ -843,7 +845,9 @@ mod tests {
         drop(peer_for("10.0.0.1:443".parse().unwrap(), true, ""));
     }
 
-    // ===== Test Utilities =====
+    // -------------------------------------------------------------------------
+    // Test Utilities
+    // -------------------------------------------------------------------------
 
     use std::sync::{
         Arc as StdArc,
