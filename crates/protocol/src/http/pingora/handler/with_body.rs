@@ -27,10 +27,11 @@ use tokio::sync::Semaphore;
 use tracing::{Instrument as _, debug};
 
 use super::{
-    adjust_compression, connected_to_upstream, emit_request_metrics, fail_to_proxy, handle_connect_failure,
-    hop_by_hop::RemoveHeader as _, logging_cleanup, record_passive_health, record_response_span_attributes,
-    release_retry_state, request_body_filter, request_filter, response_body_filter, response_filter, upstream_peer,
-    upstream_request, via,
+    compression::{adjust_compression, configure_compression},
+    connected_to_upstream, emit_request_metrics, fail_to_proxy, handle_connect_failure,
+    hop_by_hop::RemoveHeader as _,
+    logging_cleanup, record_passive_health, record_response_span_attributes, release_retry_state, request_body_filter,
+    request_filter, response_body_filter, response_filter, upstream_peer, upstream_request, via,
 };
 use crate::http::pingora::{context::PingoraRequestCtx, metrics};
 
@@ -148,10 +149,16 @@ impl ProxyHttp for PingoraHttpHandler {
     fn init_downstream_modules(&self, modules: &mut HttpModules) {
         if let Some(cfg) = &self.compression {
             debug!(level = cfg.default_level, "registering compression module");
-            modules.add_module(ResponseCompressionBuilder::enable(cfg.default_level));
+            // The shared level can exceed gzip's maximum. Keep every algorithm
+            // disabled until early_request_filter applies safe per-request levels.
+            modules.add_module(ResponseCompressionBuilder::enable(0));
         }
     }
 
+    #[expect(
+        clippy::too_many_lines,
+        reason = "admission guards and compression setup precede all request module hooks"
+    )]
     async fn early_request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<()>
     where
         Self::CTX: Send + Sync,
@@ -195,6 +202,12 @@ impl ProxyHttp for PingoraHttpHandler {
             );
             session.set_read_timeout(Some(timeout));
         }
+
+        // Pingora parses Accept-Encoding after this hook, before request_filter.
+        // Configure here so explicit levels work even with a zero shared level,
+        // and synthetic responses cannot bypass algorithm limits or disablement.
+        let pipeline = ctx.pin_pipeline(&self.pipeline);
+        configure_compression(&mut session.downstream_modules_ctx, pipeline.compression_config());
         Ok(())
     }
 

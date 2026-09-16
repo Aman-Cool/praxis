@@ -502,8 +502,8 @@ impl PingoraRequestCtx {
     /// [`pinned_pipeline`]. All subsequent hooks should call
     /// [`pipeline`] instead of re-loading from the [`ArcSwap`].
     ///
-    /// Called once by `request_filter` in both body-capable and
-    /// no-body handlers.
+    /// Called by `early_request_filter` before compression negotiation;
+    /// repeated calls in later hooks reuse the same generation.
     ///
     /// [`ArcSwap`]: arc_swap::ArcSwap
     /// [`pinned_pipeline`]: Self::pinned_pipeline

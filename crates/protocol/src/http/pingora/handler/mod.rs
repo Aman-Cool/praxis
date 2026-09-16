@@ -23,12 +23,14 @@ use pingora_core::{
 };
 use pingora_proxy::{Session, http_proxy};
 use praxis_core::{config::ABSOLUTE_MAX_BODY_BYTES, connectivity::Upstream};
-use praxis_filter::{BodyBuffer, BodyMode, CompressionConfig, FilterPipeline, HttpFilterContext, RequestExtensions};
+use praxis_filter::{BodyBuffer, BodyMode, FilterPipeline, HttpFilterContext, RequestExtensions};
 use tokio::sync::Semaphore;
 use tracing::{debug, warn};
 
 use super::{context::PingoraRequestCtx, metrics};
 
+/// Safe per-request compression configuration.
+mod compression;
 /// Upstream connection established hook.
 mod connected_to_upstream;
 /// Structured error responses for fatal proxy errors.
@@ -191,43 +193,6 @@ fn clamp_body_mode_to_ceiling(mode: BodyMode, baseline: BodyMode) -> BodyMode {
         // Stream has no buffer to clamp; other modes pass through when the
         // baseline imposes no ceiling (e.g. unbounded StreamBuffer).
         (m, None | Some(_)) => m,
-    }
-}
-
-/// Apply compression settings from the pipeline config to the Pingora response.
-fn adjust_compression(
-    session: &mut Session,
-    upstream_response: &pingora_http::ResponseHeader,
-    compression: Option<&CompressionConfig>,
-) {
-    use pingora_core::{modules::http::compression::ResponseCompression, protocols::http::compression::Algorithm};
-
-    let Some(cfg) = compression else {
-        return;
-    };
-
-    let Some(module) = session.downstream_modules_ctx.get_mut::<ResponseCompression>() else {
-        return;
-    };
-
-    let headers = &upstream_response.headers;
-
-    if !cfg.should_compress(headers) {
-        debug!("disabling compression: response does not qualify");
-        module.adjust_level(0);
-        return;
-    }
-
-    for (enabled, level, algo) in [
-        (cfg.gzip_enabled, cfg.gzip_level, Algorithm::Gzip),
-        (cfg.brotli_enabled, cfg.brotli_level, Algorithm::Brotli),
-        (cfg.zstd_enabled, cfg.zstd_level, Algorithm::Zstd),
-    ] {
-        if !enabled {
-            module.adjust_algorithm_level(algo, 0);
-        } else if let Some(lvl) = level {
-            module.adjust_algorithm_level(algo, lvl);
-        }
     }
 }
 
