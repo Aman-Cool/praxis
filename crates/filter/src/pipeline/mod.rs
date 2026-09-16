@@ -268,6 +268,15 @@ impl FilterPipeline {
         &self.body_capabilities
     }
 
+    /// Reset request-body completion flags before replaying an upstream attempt.
+    pub fn clear_request_body_done(&self, body_done_indices: &mut [bool]) {
+        for &idx in &self.request_body_filter_indices {
+            if let Some(done) = body_done_indices.get_mut(idx) {
+                *done = false;
+            }
+        }
+    }
+
     /// Whether any filter in the pipeline needs body access.
     pub fn needs_body_filters(&self) -> bool {
         self.body_capabilities.needs_request_body || self.body_capabilities.needs_response_body

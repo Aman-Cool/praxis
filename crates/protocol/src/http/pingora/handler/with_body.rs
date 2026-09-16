@@ -354,6 +354,10 @@ impl ProxyHttp for PingoraHttpHandler {
     {
         let span = ctx.request_span.clone();
         let _entered = span.enter();
+        // BodyDone applies to one attempt; retries replay downstream bytes.
+        let pipeline = ctx.pipeline(&self.pipeline);
+        pipeline.clear_request_body_done(&mut ctx.cached_body_done_indices);
+
         let is_upgrade = session.is_upgrade_req();
         upstream_request::strip_hop_by_hop(upstream_request, is_upgrade);
         upstream_request.strip_reserved_internal();

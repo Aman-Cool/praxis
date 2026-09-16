@@ -558,6 +558,25 @@ fn body_capabilities_detects_request_body_writer() {
 }
 
 #[test]
+fn request_body_reset_preserves_other_completion_flags() {
+    let chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![
+        Box::new(PassthroughFilter),
+        Box::new(BodyUppercaseFilter),
+        Box::new(ResponseBodyInspectorFilter { chunks }),
+    ]);
+    let mut body_done = [true; 3];
+
+    pipeline.clear_request_body_done(&mut body_done);
+
+    assert_eq!(
+        body_done,
+        [true, false, true],
+        "only request-body completion flags should reset"
+    );
+}
+
+#[test]
 fn body_capabilities_detects_response_body() {
     let chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
     let pipeline = make_pipeline(vec![Box::new(ResponseBodyInspectorFilter { chunks })]);
