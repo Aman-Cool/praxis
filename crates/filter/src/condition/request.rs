@@ -644,8 +644,6 @@ mod tests {
         }
 
         proptest! {
-            /// `when` and `unless` with the same predicate are exact
-            /// complements for any request.
             #[test]
             fn when_unless_duality(m in predicate(), p in path()) {
                 let req = make_request(Method::GET, &p, HeaderMap::new());
@@ -655,8 +653,6 @@ mod tests {
                 );
             }
 
-            /// A `path_prefix`-only predicate agrees with the shared
-            /// segment-boundary matcher.
             #[test]
             fn path_prefix_agrees_with_path_match(prefix in path(), p in path()) {
                 let req = make_request(Method::GET, &p, HeaderMap::new());
@@ -666,7 +662,6 @@ mod tests {
                 );
             }
 
-            /// An exact-path predicate matches exactly its own path.
             #[test]
             fn exact_path_matches_only_itself(a in path(), b in path()) {
                 let req = make_request(Method::GET, &a, HeaderMap::new());

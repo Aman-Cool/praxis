@@ -673,8 +673,6 @@ mod tests {
         }
 
         proptest! {
-            /// An exact mapping always beats a wildcard covering the
-            /// same name, regardless of SNI case.
             #[test]
             fn exact_beats_wildcard(upper in proptest::bool::ANY) {
                 let (resolver, exact_ptr, _) = &*RESOLVER;
@@ -683,8 +681,6 @@ mod tests {
                 prop_assert_eq!(Arc::as_ptr(&resolved) as usize, *exact_ptr);
             }
 
-            /// Any single-level subdomain (other than the exact name)
-            /// matches the wildcard.
             #[test]
             fn wildcard_matches_single_level(sub in label()) {
                 prop_assume!(sub != "api");
@@ -694,8 +690,6 @@ mod tests {
                 prop_assert_eq!(Arc::as_ptr(&resolved) as usize, *wildcard_ptr);
             }
 
-            /// Wildcards never cross label boundaries: multi-level
-            /// subdomains resolve to nothing (no default is set).
             #[test]
             fn wildcard_does_not_cross_labels(a in label(), b in label()) {
                 let (resolver, _, _) = &*RESOLVER;
@@ -703,7 +697,6 @@ mod tests {
                 prop_assert!(resolver.lookup(Some(&sni)).is_none());
             }
 
-            /// The bare domain itself never matches its own wildcard.
             #[test]
             fn bare_domain_does_not_match_wildcard(_dummy in proptest::bool::ANY) {
                 let (resolver, _, _) = &*RESOLVER;

@@ -240,21 +240,17 @@ mod tests {
         }
 
         proptest! {
-            /// Every generated well-formed hostname validates.
             #[test]
             fn valid_hostnames_pass(name in hostname()) {
                 prop_assert_eq!(validate(&name), Ok(()));
             }
 
-            /// A leading wildcard on a valid hostname stays valid.
             #[test]
             fn wildcard_prefix_stays_valid(name in hostname()) {
                 let wildcard = format!("*.{name}");
                 prop_assert_eq!(validate(&wildcard), Ok(()));
             }
 
-            /// A wildcard anywhere but the complete leftmost label is
-            /// rejected.
             #[test]
             fn non_leftmost_wildcard_rejected(head in label(), tail in hostname()) {
                 let mid = format!("{head}.*.{tail}");
@@ -263,7 +259,6 @@ mod tests {
                 prop_assert_eq!(validate(&fused), Err(SniNameError::InvalidWildcard));
             }
 
-            /// Underscores are never valid in any label position.
             #[test]
             fn underscore_rejected(a in label(), b in label()) {
                 let name = format!("{a}_{b}.example.com");

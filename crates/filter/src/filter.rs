@@ -444,8 +444,6 @@ mod tests {
         );
     }
 
-    /// The empty default is what makes `referenced_files` additive: a filter that
-    /// predates it declares nothing.
     #[test]
     fn default_referenced_files_is_empty() {
         let filter = MinimalFilter;

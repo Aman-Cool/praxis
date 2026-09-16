@@ -3504,8 +3504,6 @@ fn referenced_files_collects_from_every_declaring_filter() {
     );
 }
 
-/// A filter with no external config must not contribute, so the watcher does not
-/// hash or watch files nothing reads.
 #[test]
 fn referenced_files_skips_filters_that_declare_nothing() {
     let pipeline = make_pipeline(vec![
@@ -3520,9 +3518,6 @@ fn referenced_files_skips_filters_that_declare_nothing() {
     );
 }
 
-/// Duplicates survive at this level on purpose: de-duplication belongs to
-/// `ListenerPipelines::referenced_files`, which sees every listener. Collapsing
-/// here would hide a shared document from that caller.
 #[test]
 fn referenced_files_keeps_duplicates_for_the_caller_to_dedupe() {
     let shared = "/etc/praxis/shared.yaml";

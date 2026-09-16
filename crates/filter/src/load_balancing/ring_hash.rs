@@ -406,8 +406,6 @@ mod tests {
         assert_eq!(first, second, "same key should always select same endpoint (xxhash)");
     }
 
-    /// Known-answer vectors from the reference `xxHash64` implementation
-    /// (seed 0), covering the <4B, 4–31B, and ≥32B code paths.
     #[test]
     fn xxhash64_known_answers() {
         assert_eq!(xxhash64(""), 0xEF46_DB37_51D8_E999);
@@ -421,9 +419,6 @@ mod tests {
         );
     }
 
-    /// Known-answer vectors from the reference `MurmurHash3` `x64_128`
-    /// implementation (seed 0, lower 64 bits), covering tail-only and
-    /// full-block code paths.
     #[test]
     fn murmur3_known_answers() {
         assert_eq!(murmur3_64(""), 0x0);
@@ -437,7 +432,6 @@ mod tests {
         );
     }
 
-    /// Known-answer vectors for FNV-1a 64.
     #[test]
     fn fnv1a_known_answers() {
         assert_eq!(fnv1a(""), 0xCBF2_9CE4_8422_2325);
