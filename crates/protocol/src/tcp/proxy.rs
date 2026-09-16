@@ -716,7 +716,7 @@ fn extract_addrs(session: &Stream) -> (String, String) {
 }
 
 /// Why a forwarded TCP connection closed, for the `connection_close` log.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TcpCloseReason {
     /// `copy_bidirectional` completed normally (both directions saw EOF).
     Completed,

@@ -22,7 +22,7 @@ use crate::{config::Config, errors::ProxyError};
 // -----------------------------------------------------------------------------
 
 /// Admin log-level API errors mapped to HTTP status codes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LogLevelError {
     /// Client error (400).
     BadRequest(String),
@@ -70,7 +70,7 @@ pub struct PutLogLevelRequest {
 }
 
 /// One active runtime overlay returned by `GET /api/log-level`.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct LogLevelOverlayView {
     /// Module target; absent for global overlays.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,7 +82,7 @@ pub struct LogLevelOverlayView {
 }
 
 /// `GET /api/log-level` response body.
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct LogLevelStateResponse {
     /// Startup baseline rebuilt from `RUST_LOG` + `runtime.log_overrides`.
     pub baseline_directive: String,

@@ -165,7 +165,7 @@ pub(crate) struct StepTransition {
 }
 
 /// Where the step's response originated.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ResponseOrigin {
     /// A real HTTP response from the upstream.
@@ -177,7 +177,7 @@ pub(crate) enum ResponseOrigin {
 }
 
 /// Classification of transport-level failures.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TransportErrorKind {
     /// All concurrency slots were busy and the admission wait timed out.

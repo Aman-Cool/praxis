@@ -1541,7 +1541,7 @@ impl crate::HttpFilter for RejectOnCompletionFilter {
 
 // A caller-injected extension type, used to prove the parent's extensions survive
 // the streaming body's inner->held transition even when completion fails.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 struct CalloutParentMarker(&'static str);
 
 // Build a registry with the builtins plus the streaming callout test filters.

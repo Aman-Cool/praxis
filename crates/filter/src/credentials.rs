@@ -28,7 +28,7 @@ use crate::FilterError;
 /// Canonicalization makes credential matching robust to the incidental
 /// differences (host casing, an implicit port) that would otherwise let a
 /// credential silently fail to match the destination it was issued for.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq)]
 struct CanonicalAuthority {
     /// Lowercased host (DNS name or IP literal, IPv6 without brackets).
     host: Box<str>,

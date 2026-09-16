@@ -353,7 +353,7 @@ mod tests {
     use crate::composition::{CompositionError, ServerComposition};
 
     /// A marker resource a composed extension injects into per-request state.
-    #[derive(Clone, PartialEq, Eq, Debug)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct Marker(u8);
 
     impl PipelineExtension for Marker {

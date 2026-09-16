@@ -361,7 +361,7 @@ mod tests {
     use crate::composition::ServerComposition;
 
     /// A marker resource a composed extension injects into per-request state.
-    #[derive(Clone, PartialEq, Eq, Debug)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct ReloadMarker(u8);
 
     impl PipelineExtension for ReloadMarker {

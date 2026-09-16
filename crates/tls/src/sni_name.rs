@@ -30,7 +30,7 @@ use crate::dns::DnsLabelError;
 /// assert_eq!(validate("example.com"), Ok(()));
 /// assert_eq!(validate("*.example.com"), Ok(()));
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum SniNameError {
     /// The name is empty.
     #[error("must not be empty")]

@@ -42,7 +42,7 @@ use std::{
 /// inspect it through the getters below. The type deliberately does not
 /// implement serialization so wire adapters must choose an explicit output
 /// format rather than serializing authentication state wholesale.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthenticatedIdentity {
     /// Stable identifier of the authenticated subject.
     subject_id: String,
@@ -127,7 +127,7 @@ impl AuthenticatedIdentity {
 /// [`HttpFilterContext::publish_selected_application`]: crate::HttpFilterContext::publish_selected_application
 /// [`HttpFilterContext::selected_application_protocol`]: crate::HttpFilterContext::selected_application_protocol
 /// [`HttpFilterContext::selected_application_provider`]: crate::HttpFilterContext::selected_application_provider
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct SelectedClusterApplication {
     /// Opaque application protocol of the selected cluster, if tagged.
     protocol: Option<Arc<str>>,

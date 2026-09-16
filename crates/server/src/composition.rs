@@ -439,7 +439,7 @@ mod tests {
     use super::*;
 
     /// A marker resource inserted into per-request extensions.
-    #[derive(Clone, PartialEq, Eq, Debug)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct Marker(u8);
 
     impl PipelineExtension for Marker {

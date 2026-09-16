@@ -81,7 +81,7 @@ impl Default for SseLimits {
 /// discards earlier records from the same chunk. A limit violation poisons the
 /// decoder; an `error` of `Finished` instead signals a `push` after `finish` and
 /// does not poison.
-#[derive(Debug, Default, PartialEq, Eq)]
+#[derive(Debug, Default, Eq, PartialEq)]
 #[must_use]
 pub struct SseBatch {
     /// Records completed by this call, in order. Each was terminated by a blank

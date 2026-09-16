@@ -936,7 +936,7 @@ struct StreamingSelectorFilter;
 
 struct UndeclaredStreamingSelectorFilter;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 struct ParentExtension(&'static str);
 
 struct StepErrorFilter;

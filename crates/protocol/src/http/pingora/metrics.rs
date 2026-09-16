@@ -224,7 +224,7 @@ pub(crate) fn is_recorder_installed() -> bool {
 // -----------------------------------------------------------------------------
 
 /// Parsed operational counters for [`collect_stats_metrics`].
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct StatsMetricsSnapshot {
     /// In-flight HTTP requests per listener (`praxis_http_active_requests`).
     pub http_active_by_listener: std::collections::HashMap<String, u64>,

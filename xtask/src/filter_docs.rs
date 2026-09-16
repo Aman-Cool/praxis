@@ -155,7 +155,7 @@ struct FieldInfo {
 }
 
 /// How a field must appear in YAML.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RequiredKind {
     /// Field must be present.
     Yes,

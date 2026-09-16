@@ -141,7 +141,7 @@ impl MetricLabelsConfig {
 // -----------------------------------------------------------------------------
 
 /// One path segment of a compiled route template.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 enum TemplateSegment {
     /// Must equal the request's segment.
     Literal(Box<str>),
