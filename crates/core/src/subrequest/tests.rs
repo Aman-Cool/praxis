@@ -365,9 +365,6 @@ fn nominated_tokens_match_case_insensitively() {
 
 #[test]
 fn connection_token_cannot_strip_a_protected_forwarding_header() {
-    // A client-supplied `Connection` token naming a proxy-owned forwarding
-    // header must not delete it from the sub-request (same rule as the main
-    // upstream path and filtered sub-requests).
     let mut headers = HeaderMap::new();
     headers.insert("connection", "x-forwarded-for, host".parse().unwrap());
     let nominated = connection_nominated_tokens(&headers);
@@ -380,7 +377,6 @@ fn connection_token_cannot_strip_a_protected_forwarding_header() {
         !is_boundary_stripped(&"host".parse().unwrap(), &nominated),
         "a Connection token must not strip host"
     );
-    // A genuine custom hop-by-hop token is still stripped.
     assert!(
         is_request_stripped(
             &"x-custom".parse().unwrap(),
@@ -1556,7 +1552,6 @@ async fn send_streaming_backpressure_blocks_producer() {
             .await
             .unwrap();
 
-    // Read one chunk then stall — producer should block on TCP backpressure.
     let first = body.next_chunk().await.unwrap().expect("first chunk");
     assert!(!first.is_empty());
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -1567,7 +1562,6 @@ async fn send_streaming_backpressure_blocks_producer() {
         "producer should be blocked by TCP backpressure, but sent {sent_while_stalled}/{chunk_count}"
     );
 
-    // Drain remaining — all data must arrive.
     let mut total_bytes = first.len();
     while let Some(chunk) = body.next_chunk().await.unwrap() {
         total_bytes += chunk.len();
@@ -1877,7 +1871,6 @@ async fn send_streaming_h2_cleartext_cancel_resets_stream_and_connection_survive
         max_total_bytes: None,
     };
 
-    // First request — cancel mid-stream.
     let StreamingSubResponse { status, body, .. } =
         Box::pin(client.send_streaming(&peer, &request, Duration::from_secs(5), limits.clone(), None))
             .await
@@ -1895,7 +1888,6 @@ async fn send_streaming_h2_cleartext_cancel_resets_stream_and_connection_survive
         "server must observe the RST_STREAM from the cancelled stream"
     );
 
-    // Second request on same connection must succeed.
     let StreamingSubResponse { status, mut body, .. } =
         Box::pin(client.send_streaming(&peer, &request, Duration::from_secs(5), limits, None))
             .await
@@ -2022,7 +2014,6 @@ async fn send_streaming_h1_incomplete_body_not_reused() {
         max_total_bytes: None,
     };
 
-    // First request — will get an incomplete body.
     let StreamingSubResponse { mut body, .. } =
         Box::pin(client.send_streaming(&peer, &request, Duration::from_secs(5), limits.clone(), None))
             .await
@@ -2033,7 +2024,6 @@ async fn send_streaming_h1_incomplete_body_not_reused() {
     assert!(result.is_err(), "incomplete body should produce an error");
     drop(body);
 
-    // Second request must open a new connection.
     let StreamingSubResponse { mut body, .. } =
         Box::pin(client.send_streaming(&peer, &request, Duration::from_secs(5), limits, None))
             .await
@@ -2106,7 +2096,6 @@ async fn send_streaming_h1_cancel_does_not_reuse_connection() {
         max_total_bytes: None,
     };
 
-    // First request — cancel mid-stream.
     let StreamingSubResponse { mut body, .. } =
         Box::pin(client.send_streaming(&peer, &request, Duration::from_secs(5), limits.clone(), None))
             .await

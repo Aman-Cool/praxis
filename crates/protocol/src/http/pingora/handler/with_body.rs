@@ -144,8 +144,7 @@ impl ProxyHttp for PingoraHttpHandler {
     }
 
     /// Registers Pingora's compression module when compression is
-    /// configured. Otherwise skips module registration to avoid
-    /// per-request `Box` allocation overhead.
+    /// configured; otherwise skips registration.
     fn init_downstream_modules(&self, modules: &mut HttpModules) {
         if let Some(cfg) = &self.compression {
             debug!(level = cfg.default_level, "registering compression module");

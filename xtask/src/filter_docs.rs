@@ -2267,9 +2267,6 @@ mod tests {
 
     #[test]
     fn manual_deserialize_enum_still_renders_variants() {
-        // An enum whose Deserialize is hand-written (e.g. to preserve
-        // deny_unknown_fields diagnostics) must still be harvested and
-        // render its YAML alternatives, not fall back to the type name.
         let source = concat!(
             "#[derive(Serialize)] #[serde(untagged)] enum LoadBalancerStrategy ",
             "{ Simple(SimpleStrategy), Parameterised(ParameterisedStrategy) }",

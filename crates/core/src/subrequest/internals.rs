@@ -327,8 +327,7 @@ pub(super) fn record_header_termination(termination: &'static str) {
 pub(super) use crate::reserved_headers::HOP_BY_HOP_HEADERS;
 
 /// Collect the `Connection`-nominated header names, borrowed from the
-/// map's own `Connection` values. Costs nothing when the header is
-/// absent (an empty iterator collects without allocating).
+/// map's own `Connection` values.
 pub(super) fn connection_nominated_tokens(headers: &HeaderMap) -> Vec<&str> {
     headers
         .get_all(http::header::CONNECTION)

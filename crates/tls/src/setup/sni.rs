@@ -549,8 +549,6 @@ mod tests {
 
     #[test]
     fn resolve_wildcard_rejects_empty_label() {
-        // A leading-dot SNI has an empty first label; the old length
-        // check rejected it and the split-based lookup must too.
         let certs = gen_test_certs_with_sans(vec!["*.example.com".to_owned()]);
         let certificates = vec![CertKeyPair {
             cert_path: certs.cert_path.to_str().expect("path").to_owned(),

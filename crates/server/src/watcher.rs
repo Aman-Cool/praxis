@@ -776,7 +776,6 @@ mod tests {
         let refs = vec![doc.clone()];
         let before = composite_hash(VALID_YAML, &refs);
 
-        // Only the referenced document changes.
         std::fs::write(&doc, "plugins: [{name: added}]\n").unwrap();
         let after = composite_hash(VALID_YAML, &refs);
 
@@ -932,7 +931,6 @@ mod tests {
         let original_hash = composite_hash(VALID_YAML, &[]);
         let mut hash = original_hash;
 
-        // An edit that cannot be parsed stands in for any failing reload.
         std::fs::write(&config_path, "this: is: not: valid: praxis: config\n").unwrap();
         let ok = handle_reload(
             &config_path,
@@ -957,8 +955,6 @@ mod tests {
             "a failed reload must leave the hash untouched, or the retry is skipped forever",
         );
 
-        // Recovery: the same path now holds something valid, and because the hash
-        // was never advanced the attempt is not short-circuited.
         std::fs::write(&config_path, VALID_YAML).unwrap();
         let recovered = handle_reload(
             &config_path,
@@ -1653,13 +1649,9 @@ mod tests {
 
         std::thread::sleep(Duration::from_millis(WATCHER_STARTUP_MS));
 
-        // Fail once to arm the backoff window.
         std::fs::write(&config_path, "invalid: [[[yaml").unwrap();
         std::thread::sleep(Duration::from_millis(DEBOUNCE_MS + 200));
 
-        // Write the fix inside the backoff window. The watcher consumes
-        // this event while still backing off, so the retry has to come
-        // from the timer rather than from another notification.
         std::fs::write(&config_path, VALID_YAML_CHANGED).unwrap();
         std::thread::sleep(Duration::from_millis(DEBOUNCE_MS + 200));
 

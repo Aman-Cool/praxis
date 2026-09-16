@@ -127,9 +127,6 @@ impl MetricLabelsConfig {
     }
 
     /// Whether every dimension is enabled, i.e. the default label set.
-    ///
-    /// Recorders take an allocation-free fast path when this holds, so the
-    /// common case pays nothing for the feature.
     #[must_use]
     pub fn all_enabled(&self) -> bool {
         self.disabled.is_empty()
@@ -161,10 +158,6 @@ struct CompiledTemplate {
 }
 
 /// Compiled route templates, indexed by segment count.
-///
-/// Requests are matched by walking their path segments, so lookup costs
-/// O(path depth) against only the templates of the same length. No regular
-/// expressions and no per-request allocation.
 ///
 /// ```
 /// use praxis_core::config::RouteTemplates;

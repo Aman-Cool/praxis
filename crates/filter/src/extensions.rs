@@ -8,9 +8,7 @@
 //! Pingora lifecycle phases (request, request body, response,
 //! response body, logging).
 //!
-//! The framework has no knowledge of what filters store in it. The
-//! cost when unused is an empty [`HashMap`] (zero allocations, no
-//! overhead on existing filter chains).
+//! The framework has no knowledge of what filters store in it.
 //!
 //! Only one value per concrete type can be stored. Filters must use
 //! private newtypes for their state, not bare types like
@@ -199,8 +197,7 @@ impl RequestExtensions {
     /// # Panics
     ///
     /// Cannot panic in practice: the value was just inserted with
-    /// the correct type. The `expect` guards against impossible
-    /// `TypeId` collisions in the standard library.
+    /// the correct type.
     pub fn get_or_insert_with<T: Send + Sync + 'static>(&mut self, f: impl FnOnce() -> T) -> &mut T {
         #[expect(clippy::expect_used, reason = "downcast cannot fail after typed insert")]
         self.0

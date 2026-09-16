@@ -2301,9 +2301,7 @@ fn transition_transport_origin_matches_any_transport_error() {
 #[test]
 fn transport_failure_maps_to_matching_config_kind() {
     use crate::filtered_subrequest::TransportFailure;
-    // Each executor-internal failure must map to the config kind that a
-    // `transport_error` transition branch matches on. A mis-mapping here would
-    // leave classify + transition tests green while breaking branch selection.
+
     let cases = [
         (
             TransportFailure::AdmissionTimeout,
@@ -2325,7 +2323,11 @@ fn transport_failure_maps_to_matching_config_kind() {
         ),
     ];
     for (failure, expected) in cases {
-        assert_eq!(config::TransportErrorKind::from(failure), expected);
+        assert_eq!(
+            config::TransportErrorKind::from(failure),
+            expected,
+            "each executor transport failure must map to the config kind its transition branch matches on"
+        );
     }
 }
 
@@ -2993,7 +2995,6 @@ async fn iteration_streaming_body_surfaces_upstream_error() {
         let (mut socket, _) = listener.accept().await.unwrap();
         let mut buf = vec![0_u8; 8192];
         let _bytes_read = socket.read(&mut buf).await;
-        // Chunked framing promising more data, then a hard close mid-chunk.
         socket
             .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nff\r\npartial")
             .await
@@ -3982,12 +3983,6 @@ steps:
 
 #[test]
 fn step_outbound_chain_ssrf_endpoint_rejected_by_default() {
-    // A chain-binding filter nested in an IRR step binds an outbound subrequest
-    // chain whose inline cluster resolves to a loopback address. Under the
-    // strict default posture the step build must reject it with the same SSRF
-    // gate a top-level chain uses. The step's own load_balancer is also loopback
-    // and builds fine in other tests, so the rejection proves the *outbound*
-    // chain is gated — not the step's own clusters.
     let registry = outbound_callout_registry();
     let yaml = step_with_outbound_loopback_yaml();
 
@@ -4003,11 +3998,6 @@ fn step_outbound_chain_ssrf_endpoint_rejected_by_default() {
 
 #[test]
 fn step_outbound_chain_ssrf_endpoint_allowed_with_flag() {
-    // The same step must build once the operator opts in to private endpoints,
-    // proving the gate is threaded from the declared posture into step-pipeline
-    // construction and is not an unconditional rejection. `lb_without_router` is
-    // skipped so the lone load_balancer in the outbound chain does not fail for
-    // an unrelated ordering reason.
     let registry = outbound_callout_registry();
     let yaml = step_with_outbound_loopback_yaml();
 

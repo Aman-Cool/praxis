@@ -58,8 +58,8 @@ impl RingHash {
 
     /// Hash the key and return the corresponding healthy endpoint.
     ///
-    /// Uses binary search on the sorted ring to find the first virtual node
-    /// with a hash >= the key hash. Probes clockwise to skip unhealthy endpoints.
+    /// Skips unhealthy endpoints, falling back to a hashed position when every
+    /// endpoint is unhealthy.
     pub(crate) fn select(
         &self,
         hash_key: Option<&str>,
@@ -528,13 +528,15 @@ mod tests {
 
     #[test]
     fn xxhash64_reference_vector_empty() {
-        // Canonical XXH64("", seed=0) from the xxHash specification.
-        assert_eq!(xxhash64(""), 0xEF46_DB37_51D8_E999);
+        assert_eq!(
+            xxhash64(""),
+            0xEF46_DB37_51D8_E999,
+            "canonical XXH64(\"\", seed=0) from the xxHash specification"
+        );
     }
 
     #[test]
     fn xxhash64_deterministic() {
-        // Same input must always produce the same output across calls.
         let inputs = ["a", "abc", "Hello, world!", "abcdefghijklmnopqrstuvwxyz012345"];
         for input in inputs {
             let first = xxhash64(input);

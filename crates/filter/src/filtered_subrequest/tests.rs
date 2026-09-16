@@ -198,31 +198,26 @@ fn nested_body_limit_detects_oversized_buffer() {
 
 #[test]
 fn transformed_response_must_remain_within_all_limits() {
-    // The executor's global ceiling trips and is reported as the effective limit.
     assert_eq!(
         super::sanitize::response_body_overflow_limit(crate::BodyMode::Stream, 4, 5),
         Some(4),
         "a body over the global ceiling reports the global ceiling as the tripped limit"
     );
-    // The tighter of the two limits (the nested mode ceiling) is the one reported.
     assert_eq!(
         super::sanitize::response_body_overflow_limit(crate::BodyMode::StreamBuffer { max_bytes: Some(3) }, 4, 4),
         Some(3),
         "the smaller nested ceiling must be the reported limit"
     );
-    // A body within both limits does not overflow.
     assert_eq!(
         super::sanitize::response_body_overflow_limit(crate::BodyMode::StreamBuffer { max_bytes: Some(4) }, 4, 4),
         None,
         "a body within every limit must not overflow"
     );
-    // A `SizeLimit` tighter than the global ceiling is the reported limit.
     assert_eq!(
         super::sanitize::response_body_overflow_limit(crate::BodyMode::SizeLimit { max_bytes: 3 }, 4, 4),
         Some(3),
         "a SizeLimit tighter than the global ceiling must be the reported limit"
     );
-    // `StreamBuffer` with no mode ceiling falls back to the global ceiling.
     assert_eq!(
         super::sanitize::response_body_overflow_limit(crate::BodyMode::StreamBuffer { max_bytes: None }, 4, 5),
         Some(4),

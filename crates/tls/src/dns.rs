@@ -253,7 +253,6 @@ mod tests {
 
     #[test]
     fn accept_hostname_at_253_bytes() {
-        // 63 + 1 + 63 + 1 + 63 + 1 + 61 = 253
         let hostname = format!(
             "{}.{}.{}.{}",
             "a".repeat(63),

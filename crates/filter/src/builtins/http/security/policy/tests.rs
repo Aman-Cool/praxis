@@ -1045,7 +1045,6 @@ fn config_parses_minimal_yaml() {
 
 #[test]
 fn rejects_zero_max_buffer_bytes() {
-    // The check runs before the config_path read, so a bogus path is fine.
     let cfg = PolicyFilterConfig {
         config_path: "/nonexistent/policy.yaml".to_owned(),
         allow_private_idp: false,
@@ -1571,7 +1570,6 @@ async fn tampered_jwt_signature_rejects_401() {
     let (_dir, path) = write_single_plugin_config();
     let filter = build_filter(path);
 
-    // Flip the final character of the signature segment.
     let mut token = mint_jwt(&standard_claims("alice"));
     let last = token.pop().unwrap_or('A');
     token.push(if last == 'A' { 'B' } else { 'A' });
@@ -1674,8 +1672,6 @@ async fn current_thread_runtime_allows_pure_l7() {
     let req = make_request(Method::GET, "/");
     let mut ctx = make_filter_context(&req);
 
-    // `on_request` returns an Ok authorization verdict on a current-thread
-    // runtime — no runtime-flavor rejection.
     let action = filter.on_request(&mut ctx).await;
     assert!(
         action.is_ok(),
@@ -2680,9 +2676,6 @@ async fn response_phase_without_request_identity_fails_closed() {
     ctx.set_metadata("mcp.method", "tools/call");
     ctx.set_metadata("mcp.name", "echo");
 
-    // No `on_request_body` ran on this ctx, so no `ResolvedIdentity` is
-    // stashed. The response body is comfortably larger than the deny
-    // envelope so the envelope fits within the committed length.
     let original = bytes::Bytes::from(format!(
         r#"{{"jsonrpc":"2.0","id":1,"result":{{"content":[{{"type":"text","text":"{}"}}]}}}}"#,
         "x".repeat(256)
@@ -2728,8 +2721,6 @@ fn attach_delegated_tokens_first_writer_wins_per_outbound_header() {
     let expires = Utc::now() + Duration::hours(1);
     let tok_a = RawDelegatedToken::new("token-a", "Authorization", "aud-a", Vec::<String>::new(), expires);
     let tok_b = RawDelegatedToken::new("token-b", "Authorization", "aud-b", Vec::<String>::new(), expires);
-    // Built through the constructor rather than a struct expression: the key is
-    // non-exhaustive so a future principal slot does not break callers.
     let key_a = DelegationKey::new(DelegationMode::OnBehalfOfUser, "aud-a", Vec::new()).with_subject_id("alice");
     let key_b = DelegationKey::new(DelegationMode::OnBehalfOfUser, "aud-b", Vec::new()).with_subject_id("alice");
     let mut creds = RawCredentialsExtension::default();

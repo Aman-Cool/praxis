@@ -455,7 +455,6 @@ mod tests {
 
     #[test]
     fn should_execute_from_overlay_sees_added_header() {
-        // The request has no x-gate, but the overlay source does.
         let req = make_request(Method::GET, "/", HeaderMap::new());
         let source = MockSource::with(&[("x-gate", "on")]);
         let run = should_execute_from(&[when(header_match(&[("x-gate", "on")]))], &req, &source).unwrap();
@@ -464,7 +463,6 @@ mod tests {
 
     #[test]
     fn should_execute_from_overlay_remove_masks_original() {
-        // The request has x-gate, but the overlay masks it (returns None).
         let mut headers = HeaderMap::new();
         headers.insert("x-gate", HeaderValue::from_static("on"));
         let req = make_request(Method::GET, "/", headers);
@@ -487,7 +485,6 @@ mod tests {
     #[test]
     fn should_execute_from_invalid_condition_name_is_no_match() {
         let req = make_request(Method::GET, "/", HeaderMap::new());
-        // A space makes the name invalid; it can never equal a real header.
         let run = should_execute_from(&[when(header_match(&[("x gate", "on")]))], &req, &req).unwrap();
         assert!(!run, "an invalid condition header name should be a no-match");
     }
