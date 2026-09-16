@@ -99,7 +99,8 @@ pub use factory::{
 };
 pub use filter::{Filter, FilterContext, FilterError, HttpFilter};
 pub use filtered_subrequest::{
-    CalloutResponse, FilteredSubrequestExecutor, StagedUpstream, StagedUpstreamFallback, SubrequestRuntime,
+    CalloutOutcome, CalloutResponse, FilteredSubrequestExecutor, StagedUpstream, StagedUpstreamFallback,
+    SubrequestRuntime,
 };
 pub use pipeline::{
     FilterPipeline, PipelineExtension,
