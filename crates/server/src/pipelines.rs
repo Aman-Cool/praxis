@@ -123,6 +123,9 @@ pub fn resolve_pipelines(
 /// hooks run again on every hot reload, so downstream extensions are never lost
 /// across a reload.
 ///
+/// Registers `subrequest_client`'s connector for the policy engine first, since
+/// a policy filter fetches JWKS while it is being constructed.
+///
 /// # Errors
 ///
 /// Returns an error when pipeline construction fails (unknown filter chain
@@ -147,6 +150,14 @@ pub(crate) fn resolve_pipelines_with_composition(
     subrequest_client: &SubRequestClient,
     composition: &PipelineComposition,
 ) -> Result<ListenerPipelines, Box<dyn std::error::Error + Send + Sync>> {
+    // Before any pipeline is built: a policy filter fetches JWKS while it is
+    // being constructed below. This sits here rather than in the wrapper so
+    // the composition path registers too. Unconditional: the setter is a no-op
+    // without `policy-engine`, and gating it on this crate's own feature missed
+    // builds where a dependency turned the filter on through feature
+    // unification.
+    praxis_filter::set_policy_subrequest_connector(subrequest_client.connector());
+
     let chains: HashMap<&str, &[_]> = config
         .filter_chains
         .iter()
@@ -342,7 +353,7 @@ mod tests {
     use crate::composition::{CompositionError, ServerComposition};
 
     /// A marker resource a composed extension injects into per-request state.
-    #[derive(Clone, PartialEq, Eq, Debug)]
+    #[derive(Clone, Debug, Eq, PartialEq)]
     struct Marker(u8);
 
     impl PipelineExtension for Marker {
@@ -372,9 +383,6 @@ mod tests {
 
     #[test]
     fn resolve_pipelines_rejects_http_filter_on_tcp_listener() {
-        // An HTTP-level filter (ip_acl) on a TCP listener is silently skipped
-        // at runtime, so a configured security control would never run. Reject
-        // it at build time instead.
         let config = Config::from_yaml(
             r#"
 listeners:
@@ -412,10 +420,6 @@ filter_chains:
 
     #[test]
     fn resolve_pipelines_wires_kv_registry_even_when_empty() {
-        // The KV registry starts empty and filters populate it on demand at
-        // request time, so it must be injected into every pipeline regardless
-        // of whether it currently holds any stores. A missing registry makes
-        // ctx.kv_stores None forever, disabling the whole KV surface.
         let config = valid_config();
         let registry = FilterRegistry::with_builtins();
         let pipelines = resolve_pipelines(
@@ -975,7 +979,6 @@ filter_chains:
             "the factory must run exactly once per listener pipeline"
         );
 
-        // Each listener pipeline carries its own fresh extension.
         for name in ["web", "api"] {
             let pipeline = pipelines.get(name).expect("listener pipeline exists").load();
             let mut request_extensions = RequestExtensions::new();
@@ -1050,7 +1053,6 @@ filter_chains:
         let observed_in_validator = Arc::clone(&observed);
         let (_registry_factory, composition) = ServerComposition::standard()
             .add_pipeline_validator(move |ctx| {
-                // valid_config()'s single chain has a router + load_balancer.
                 observed_in_validator.store(ctx.entries().len(), Ordering::SeqCst);
                 assert_eq!(ctx.pipeline().len(), ctx.entries().len());
                 assert_eq!(ctx.listener().name, "web");
@@ -1077,12 +1079,6 @@ filter_chains:
 
     #[test]
     fn composition_validator_sees_entry_conditions_and_branch_chains() {
-        // Regression for the entries snapshot: build_with_chains() drains
-        // conditions, response_conditions, and branch_chains out of the entries
-        // via mem::take while constructing the pipeline. If the validator were
-        // handed those consumed entries, conditional filters would look
-        // unconditional and branch chains would vanish. Assert every gated
-        // field is still visible, not merely that the entry count matches.
         const REQUEST_CONDITION: usize = 1 << 0;
         const RESPONSE_CONDITION: usize = 1 << 1;
         const BRANCH_CHAIN: usize = 1 << 2;
@@ -1308,7 +1304,6 @@ filter_chains:
 
     #[test]
     fn build_subrequest_client_omits_circuit_breaker_when_unset() {
-        // valid_config() configures no runtime.subrequest_circuit_breaker.
         let client = build_subrequest_client(&valid_config());
         assert!(
             !client.connector().has_circuit_breaker(),

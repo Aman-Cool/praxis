@@ -14,7 +14,7 @@
 //! | [`tcp`] | Connect/disconnect execution |
 //! | [`evaluate`] | Branch condition checking and dispatch |
 //! | [`branch`] | Runtime branch types ([`ResolvedBranch`], [`BranchOutcome`]) |
-//! | [`filter`] | [`PipelineFilter`] — the per-filter wrapper |
+//! | [`filter`] | [`PipelineFilter`], the per-filter wrapper |
 //! | [`body`] | Body chunk processing utilities |
 //! | [`checks`] | Ordering validation (router before LB, etc.) |
 //! | [`clusters`] | Cluster reference collection |
@@ -156,6 +156,10 @@ pub struct FilterPipeline {
     /// Indices into `filters` of filters declaring response-body access.
     response_body_filter_indices: Vec<usize>,
 
+    /// Indices into `filters` of filters declaring selected-upstream
+    /// request-body access.
+    selected_upstream_request_body_filter_indices: Vec<usize>,
+
     /// Whether upstream hostnames may resolve to private or reserved IPs.
     ///
     /// Mirrors `insecure_options.allow_private_upstreams`; consumed by the
@@ -276,6 +280,7 @@ impl FilterPipeline {
     ///
     /// Response-body marks are left alone: they belong to the response the
     /// retried attempt has not produced yet.
+    /// Reset request-body completion flags before replaying an upstream attempt.
     pub fn clear_request_body_done(&self, body_done_indices: &mut [bool]) {
         for &idx in &self.request_body_filter_indices {
             if let Some(done) = body_done_indices.get_mut(idx) {
@@ -354,7 +359,7 @@ impl FilterPipeline {
     /// A terminal filter short-circuits the request phase with a response and no
     /// upstream. The HTTP filtered sub-request executor forwards to a resolved
     /// upstream and cannot surface such a response, so a terminal filter bound
-    /// into an outbound chain — at the top level or buried in a branch — must be
+    /// into an outbound chain (at the top level or buried in a branch) must be
     /// rejected at build time rather than silently activate and drop its response
     /// at runtime.
     ///

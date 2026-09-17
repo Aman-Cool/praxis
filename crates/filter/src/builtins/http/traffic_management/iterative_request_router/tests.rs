@@ -11,9 +11,9 @@ use super::{
 };
 use crate::factory::parse_filter_config;
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Config Validation
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn valid_minimal_config() {
@@ -525,9 +525,9 @@ steps:
     assert!(config::validate(&cfg).is_ok(), "multi-step config should be valid");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Filter Construction
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn from_config_builds_filter() {
@@ -582,9 +582,9 @@ steps:
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Transition Evaluation
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn transition_default_returns_done() {
@@ -704,9 +704,9 @@ fn transition_first_match_wins() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Response Building
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn build_terminal_preserves_status() {
@@ -773,9 +773,9 @@ fn build_terminal_preserves_headers() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Streaming Validation
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 #[expect(clippy::too_many_lines, reason = "YAML config literal")]
@@ -928,15 +928,15 @@ fn streaming_runtime_guard_accepts_default_transition() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Test Utilities
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 struct StreamingSelectorFilter;
 
 struct UndeclaredStreamingSelectorFilter;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq)]
 struct ParentExtension(&'static str);
 
 struct StepErrorFilter;
@@ -1142,9 +1142,9 @@ fn make_local_outcome(status: u16) -> super::StepOutcome {
     }
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // parse_depth
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn parse_depth_missing_header() {
@@ -1194,18 +1194,18 @@ fn parse_depth_empty_string() {
     assert_eq!(super::parse_depth(&req), 0, "empty should return 0");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // max_depth
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn max_depth_is_three() {
     assert_eq!(config::max_depth(), 3, "max_depth should be 3");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Config Validation - Boundaries
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn accepts_max_iterations_one() {
@@ -1431,9 +1431,9 @@ steps:
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Serde Defaults
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn serde_default_max_iterations() {
@@ -1521,9 +1521,9 @@ steps:
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // deny_unknown_fields
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn rejects_unknown_top_level_key() {
@@ -1588,9 +1588,9 @@ steps:
     assert!(result.is_err(), "unknown transition key should be rejected");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Trait Methods
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn request_body_access_returns_read_only() {
@@ -1644,9 +1644,9 @@ steps:
     assert!(result.is_err(), "validation failure should propagate");
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // on_request
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn on_request_depth_exceeded() {
@@ -1956,9 +1956,9 @@ fn start_unit_stream_backend() -> u16 {
     port
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // on_request_body - not end_of_stream
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[tokio::test]
 async fn on_request_body_not_end_of_stream() {
@@ -1973,9 +1973,9 @@ async fn on_request_body_not_end_of_stream() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Transition Evaluation - Additional
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn transition_status_and_filter_both_match() {
@@ -2294,16 +2294,14 @@ fn transition_transport_origin_matches_any_transport_error() {
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Transport Failure -> Config Kind Bridge
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn transport_failure_maps_to_matching_config_kind() {
     use crate::filtered_subrequest::TransportFailure;
-    // Each executor-internal failure must map to the config kind that a
-    // `transport_error` transition branch matches on. A mis-mapping here would
-    // leave classify + transition tests green while breaking branch selection.
+
     let cases = [
         (
             TransportFailure::AdmissionTimeout,
@@ -2317,18 +2315,25 @@ fn transport_failure_maps_to_matching_config_kind() {
             config::TransportErrorKind::DeadlineExceeded,
         ),
         (
-            TransportFailure::ResponseTooLarge,
+            TransportFailure::ResponseTooLarge {
+                actual: 200,
+                limit: 100,
+            },
             config::TransportErrorKind::ResponseTooLarge,
         ),
     ];
     for (failure, expected) in cases {
-        assert_eq!(config::TransportErrorKind::from(failure), expected);
+        assert_eq!(
+            config::TransportErrorKind::from(failure),
+            expected,
+            "each executor transport failure must map to the config kind its transition branch matches on"
+        );
     }
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // build_terminal_response - Additional
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 #[test]
 fn build_terminal_empty_body_has_no_body() {
@@ -2461,9 +2466,9 @@ steps:
     assert!(error.to_string().contains("failure_mode: open"));
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Additional Test Utility
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Build YAML with `n` steps chained s0 -> s1 -> ... -> s(n-1).
 fn build_n_step_yaml(n: usize) -> serde_yaml::Value {
@@ -2503,14 +2508,14 @@ steps:
     super::IterativeRequestRouterFilter::from_config(&yaml).unwrap()
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Runtime Iteration Tests
 //
 // These exercise `run_iterations` end-to-end against raw in-process
 // TCP backends, covering the buffered and streaming dispatch paths,
 // transport failure classification, timeout handling, and header
 // mutation plumbing.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Spawn a raw HTTP/1.1 backend that serves `response` verbatim to
 /// every accepted connection until aborted.
@@ -2990,7 +2995,6 @@ async fn iteration_streaming_body_surfaces_upstream_error() {
         let (mut socket, _) = listener.accept().await.unwrap();
         let mut buf = vec![0_u8; 8192];
         let _bytes_read = socket.read(&mut buf).await;
-        // Chunked framing promising more data, then a hard close mid-chunk.
         socket
             .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nff\r\npartial")
             .await
@@ -3299,9 +3303,9 @@ steps:
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Response Body Mode Limits
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Filter whose response body mode is a small `StreamBuffer` ceiling,
 /// without streaming selection.
@@ -3368,9 +3372,9 @@ steps:
     );
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // Runtime Streaming Guards
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 /// Filter that selects streaming at runtime WITHOUT declaring the
 /// capability, bypassing config-time validation the way a dynamically
@@ -3627,4 +3631,384 @@ steps:
         },
         other => panic!("expected TerminalResponse, got {other:?}"),
     }
+}
+
+// -----------------------------------------------------------------------------
+// Selected Cluster Application Isolation Across Steps
+//
+// A single `RequestExtensions` is threaded across steps, so a step must
+// not observe the cluster application metadata published by a prior step.
+// -----------------------------------------------------------------------------
+
+/// Shared slot recording the selected cluster application a probe filter
+/// observed from inside an IRR step, so the test can assert on it afterward.
+type ObservedApplication = std::sync::Arc<std::sync::Mutex<Option<(Option<String>, Option<String>)>>>;
+
+/// Records the selected cluster application it observes during the request
+/// body phase. Declares a `StreamBuffer` request body mode so its
+/// `on_request_body` hook runs before the step's `on_request` phase, i.e.
+/// before that step's load balancer selects and publishes.
+struct ApplicationProbeFilter {
+    observed: ObservedApplication,
+}
+
+#[async_trait::async_trait]
+impl crate::HttpFilter for ApplicationProbeFilter {
+    fn name(&self) -> &'static str {
+        "test_application_probe"
+    }
+
+    fn request_body_access(&self) -> crate::BodyAccess {
+        crate::BodyAccess::ReadOnly
+    }
+
+    fn request_body_mode(&self) -> crate::BodyMode {
+        crate::BodyMode::StreamBuffer { max_bytes: Some(65536) }
+    }
+
+    async fn on_request(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+    ) -> Result<crate::FilterAction, crate::FilterError> {
+        Ok(crate::FilterAction::Continue)
+    }
+
+    async fn on_request_body(
+        &self,
+        ctx: &mut crate::HttpFilterContext<'_>,
+        _body: &mut Option<bytes::Bytes>,
+        _end_of_stream: bool,
+    ) -> Result<crate::FilterAction, crate::FilterError> {
+        let protocol = ctx.selected_application_protocol().map(str::to_owned);
+        let provider = ctx.selected_application_provider().map(str::to_owned);
+        *self.observed.lock().unwrap() = Some((protocol, provider));
+        Ok(crate::FilterAction::Continue)
+    }
+}
+
+/// Build an IRR filter whose registry includes a probe filter recording
+/// the selected cluster application into `observed`.
+fn irr_with_application_probe(yaml: &str, observed: &ObservedApplication) -> Box<dyn crate::HttpFilter> {
+    let observed = std::sync::Arc::clone(observed);
+    let mut registry = crate::FilterRegistry::with_builtins();
+    registry
+        .register(
+            "test_application_probe",
+            crate::FilterFactory::Http(std::sync::Arc::new(move |_| {
+                Ok(Box::new(ApplicationProbeFilter {
+                    observed: std::sync::Arc::clone(&observed),
+                }))
+            })),
+        )
+        .unwrap();
+    let value: serde_yaml::Value = serde_yaml::from_str(yaml).unwrap();
+    super::IterativeRequestRouterFilter::from_config_with_registry(&value, &registry).unwrap()
+}
+
+#[tokio::test]
+async fn iteration_streambuffer_step_body_hook_does_not_observe_prior_step_application() {
+    let (addr, backend) = spawn_raw_backend("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok").await;
+    let yaml = format!(
+        "
+initial_step: tagged
+steps:
+  - name: tagged
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: tagged_backend
+      - filter: load_balancer
+        clusters:
+          - name: tagged_backend
+            endpoints:
+              - \"{addr}\"
+            http:
+              application_protocol: openai_chat_completions
+              application_provider: vllm
+    on_result:
+      - default: true
+        next: untagged
+  - name: untagged
+    filters:
+      - filter: test_application_probe
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: plain_backend
+      - filter: load_balancer
+        clusters:
+          - name: plain_backend
+            endpoints:
+              - \"{addr}\"
+    on_result:
+      - default: true
+        done: true
+"
+    );
+    let observed = ObservedApplication::default();
+    let filter = irr_with_application_probe(&yaml, &observed);
+    let client = make_client();
+    let req = crate::test_utils::make_request(http::Method::POST, "/chat");
+    let mut ctx = make_iteration_context(&req, &client, b"payload");
+
+    let action = filter.on_request(&mut ctx).await.unwrap();
+    backend.abort();
+
+    assert!(
+        matches!(action, crate::FilterAction::TerminalResponse(_)),
+        "the two-step run must reach a terminal response: {action:?}"
+    );
+    let (protocol, provider) = observed
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("the probe body hook must have run in the untagged step");
+    assert_eq!(
+        protocol, None,
+        "the untagged step's body hook must not observe the prior tagged step's application_protocol before selection"
+    );
+    assert_eq!(
+        provider, None,
+        "the untagged step's body hook must not observe the prior tagged step's application_provider before selection"
+    );
+}
+
+#[tokio::test]
+async fn iteration_selection_failure_does_not_leak_prior_step_application() {
+    let (addr, backend) = spawn_raw_backend("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok").await;
+    let yaml = format!(
+        "
+initial_step: tagged
+steps:
+  - name: tagged
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: tagged_backend
+      - filter: load_balancer
+        clusters:
+          - name: tagged_backend
+            endpoints:
+              - \"{addr}\"
+            http:
+              application_protocol: openai_chat_completions
+              application_provider: vllm
+    on_result:
+      - default: true
+        next: broken
+  - name: broken
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: empty_backend
+      - filter: load_balancer
+        clusters:
+          - name: empty_backend
+            endpoints:
+              - address: \"{addr}\"
+                weight: 0
+    on_result:
+      - default: true
+        done: true
+"
+    );
+    let filter = irr_from_yaml(&yaml);
+    let client = make_client();
+    let req = crate::test_utils::make_request(http::Method::POST, "/chat");
+    let mut ctx = make_iteration_context(&req, &client, b"payload");
+
+    let err = filter.on_request(&mut ctx).await.unwrap_err();
+    backend.abort();
+
+    assert!(
+        err.to_string().contains("no available endpoints"),
+        "the second step's selection must fail: {err}"
+    );
+    assert_eq!(
+        ctx.selected_application_protocol(),
+        None,
+        "a step whose selection fails must not leak the prior step's application_protocol to the parent"
+    );
+    assert_eq!(
+        ctx.selected_application_provider(),
+        None,
+        "a step whose selection fails must not leak the prior step's application_provider to the parent"
+    );
+}
+
+#[tokio::test]
+async fn iteration_max_iterations_early_exit_does_not_leak_prior_step_application() {
+    let (addr, backend) = spawn_raw_backend("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n").await;
+    let yaml = format!(
+        "
+initial_step: tagged
+max_iterations: 1
+steps:
+  - name: tagged
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: tagged_backend
+      - filter: load_balancer
+        clusters:
+          - name: tagged_backend
+            endpoints:
+              - \"{addr}\"
+            http:
+              application_protocol: openai_chat_completions
+              application_provider: vllm
+    on_result:
+      - status: [200]
+        next: tagged
+      - default: true
+        done: true
+"
+    );
+    let filter = irr_from_yaml(&yaml);
+    let client = make_client();
+    let req = crate::test_utils::make_request(http::Method::GET, "/loop");
+    let mut ctx = make_iteration_context(&req, &client, b"");
+
+    let action = filter.on_request(&mut ctx).await.unwrap();
+    backend.abort();
+
+    let is_508 = matches!(&action, crate::FilterAction::Reject(rej) if rej.status == 508);
+    assert!(is_508, "exhausted iterations must reject with 508: {action:?}");
+    assert_eq!(
+        ctx.selected_application_protocol(),
+        None,
+        "a max-iterations early exit must not leak the prior step's application_protocol to the parent"
+    );
+    assert_eq!(
+        ctx.selected_application_provider(),
+        None,
+        "a max-iterations early exit must not leak the prior step's application_provider to the parent"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Step outbound-chain SSRF gating honors the operator's posture
+// -----------------------------------------------------------------------------
+
+/// A chain-binding filter that binds its configured `outbound_chain` into a
+/// prebuilt pipeline at construction time. Nested inside an IRR step, it lets a
+/// test prove the step build gates the bound chain's inline clusters by the
+/// operator's declared posture rather than an unconditional strict default.
+struct OutboundCalloutFilter {
+    outbound: std::sync::Arc<crate::FilterPipeline>,
+}
+
+#[async_trait::async_trait]
+impl crate::HttpFilter for OutboundCalloutFilter {
+    fn name(&self) -> &'static str {
+        "test_outbound_callout"
+    }
+
+    fn referenced_files(&self) -> Vec<std::path::PathBuf> {
+        self.outbound.referenced_files()
+    }
+
+    async fn on_request(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+    ) -> Result<crate::FilterAction, crate::FilterError> {
+        Ok(crate::FilterAction::Continue)
+    }
+}
+
+/// Registry with a chain-binding `test_outbound_callout` filter that resolves
+/// its inline `outbound_chain` via the binding context.
+fn outbound_callout_registry() -> crate::FilterRegistry {
+    let mut registry = crate::FilterRegistry::with_builtins();
+    registry
+        .register_chain_binding(
+            "test_outbound_callout",
+            std::sync::Arc::new(|config: &serde_yaml::Value, ctx: &crate::ChainBindingContext<'_>| {
+                let raw = config
+                    .get("outbound_chain")
+                    .cloned()
+                    .ok_or_else(|| crate::FilterError::from("missing outbound_chain"))?;
+                let chain_ref: praxis_core::config::ChainRef = serde_yaml::from_value(raw)
+                    .map_err(|e| crate::FilterError::from(format!("bad outbound_chain: {e}")))?;
+                let outbound = ctx.bind_chain(&chain_ref)?;
+                let filter: Box<dyn crate::HttpFilter> = Box::new(OutboundCalloutFilter {
+                    outbound: std::sync::Arc::new(outbound),
+                });
+                Ok(filter)
+            }),
+        )
+        .unwrap();
+    registry
+}
+
+/// IRR config whose single step nests a chain-binding callout binding an
+/// outbound chain with a loopback inline cluster, plus the step's own
+/// router + `load_balancer` (loopback too, to show step clusters are not gated).
+fn step_with_outbound_loopback_yaml() -> serde_yaml::Value {
+    serde_yaml::from_str(
+        "
+initial_step: s
+steps:
+  - name: s
+    filters:
+      - filter: test_outbound_callout
+        outbound_chain:
+          name: outbound
+          filters:
+            - filter: load_balancer
+              clusters:
+                - name: web
+                  endpoints:
+                    - address: \"127.0.0.1:80\"
+      - filter: router
+        routes:
+          - path_prefix: \"/\"
+            cluster: backend
+      - filter: load_balancer
+        clusters:
+          - name: backend
+            endpoints:
+              - \"127.0.0.1:9\"
+    on_result:
+      - default: true
+        done: true
+",
+    )
+    .unwrap()
+}
+
+#[test]
+fn step_outbound_chain_ssrf_endpoint_rejected_by_default() {
+    let registry = outbound_callout_registry();
+    let yaml = step_with_outbound_loopback_yaml();
+
+    let err = super::IterativeRequestRouterFilter::from_config_with_registry(&yaml, &registry)
+        .err()
+        .expect("strict default posture must reject the outbound chain's loopback endpoint");
+    assert!(
+        err.to_string().contains("sensitive address"),
+        "an IRR step's outbound-chain endpoint resolving to a sensitive address must be rejected \
+         unless insecure_options.allow_private_endpoints is set: {err}"
+    );
+}
+
+#[test]
+fn step_outbound_chain_ssrf_endpoint_allowed_with_flag() {
+    let registry = outbound_callout_registry();
+    let yaml = step_with_outbound_loopback_yaml();
+
+    let insecure = praxis_core::config::InsecureOptions {
+        allow_private_endpoints: true,
+        skip_pipeline_checks: praxis_core::config::SkipPipelineChecks {
+            lb_without_router: true,
+            ..praxis_core::config::SkipPipelineChecks::default()
+        },
+        ..praxis_core::config::InsecureOptions::default()
+    };
+    super::IterativeRequestRouterFilter::from_config_with_registry_and_insecure(&yaml, &registry, &insecure)
+        .expect("an IRR step whose outbound chain opts in to a private endpoint must build");
 }

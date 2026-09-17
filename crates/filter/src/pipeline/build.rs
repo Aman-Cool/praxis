@@ -25,7 +25,7 @@ use tracing::{debug, warn};
 
 use super::{
     FilterPipeline,
-    body::{body_filter_indices, compute_body_capabilities},
+    body::{body_filter_indices, compute_body_capabilities, selected_upstream_request_body_indices},
     filter::PipelineFilter,
 };
 use crate::{FilterError, any_filter::AnyFilter, registry::FilterRegistry};
@@ -37,8 +37,8 @@ use crate::{FilterError, any_filter::AnyFilter, registry::FilterRegistry};
 impl FilterPipeline {
     /// Build a pipeline by instantiating each filter entry via the registry.
     ///
-    /// Conditions are moved out of entries via [`mem::take`] to avoid
-    /// cloning. After this call, each entry's condition vecs are empty.
+    /// Conditions are moved out of `entries`; after this call, each entry's
+    /// condition vecs are empty.
     ///
     /// # Errors
     ///
@@ -103,11 +103,16 @@ impl FilterPipeline {
     }
 
     /// Create a pipeline from an already-resolved filter list.
+    #[expect(
+        clippy::too_many_lines,
+        reason = "single construction choke point: one precompute per body phase plus the full struct literal"
+    )]
     pub(crate) fn from_filters(filters: Vec<PipelineFilter>) -> Self {
         let body_capabilities = compute_body_capabilities(&filters);
         let compression = extract_compression_config(&filters);
         let may_select_streaming_subrequest_response = filters_may_select_streaming_subrequest_response(&filters);
         let (request_body_filter_indices, response_body_filter_indices) = body_filter_indices(&filters);
+        let selected_upstream_request_body_filter_indices = selected_upstream_request_body_indices(&filters);
         let id_generator = Arc::new(IdGenerator::new());
         let time_source: Arc<dyn praxis_core::time::TimeSource> = Arc::new(SystemTimeSource);
         let mut pipeline = Self {
@@ -116,6 +121,7 @@ impl FilterPipeline {
             filters,
             request_body_filter_indices,
             response_body_filter_indices,
+            selected_upstream_request_body_filter_indices,
             allow_private_upstreams: false,
             health_registry: None,
             id_generator: Arc::clone(&id_generator),
@@ -212,6 +218,8 @@ impl FilterPipeline {
         super::checks::check_skip_to_bypasses_security(&self.filters, &mut errors);
         super::checks::check_terminal_rejoin_bypasses_security(&self.filters, &mut errors);
         super::checks::check_branch_body_filters(&self.filters, &mut errors);
+        super::checks::check_branch_selected_upstream_body_filters(&self.filters, &mut errors);
+        super::checks::check_selected_upstream_body_mode(&self.filters, &mut errors);
         super::checks::check_irr_with_router_or_lb(&names, &mut errors);
         if self.may_select_streaming_subrequest_response
             && matches!(
@@ -231,7 +239,9 @@ impl FilterPipeline {
 
     /// Check for non-fatal ordering advisories.
     ///
-    /// Currently detects: all routers conditional with no fallback.
+    /// Currently detects: a router with no load balancer, all routers
+    /// conditional with no fallback, and security filters reachable only
+    /// through a conditional branch.
     ///
     /// ```
     /// use praxis_filter::{FailureMode, FilterEntry, FilterPipeline, FilterRegistry};
@@ -268,6 +278,7 @@ impl FilterPipeline {
 
         super::checks::check_router_without_lb(&names, &mut warnings);
         super::checks::check_all_routers_conditional(&names, &self.filters, &mut warnings);
+        super::checks::check_security_filter_in_conditional_branch(&self.filters, &mut warnings);
 
         warnings
     }

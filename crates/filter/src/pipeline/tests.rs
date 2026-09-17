@@ -119,9 +119,6 @@ fn build_stops_on_first_error() {
 
 #[tokio::test]
 async fn terminal_branch_without_response_fails_closed() {
-    // A `terminal`/`client` rejoin whose sub-chain produces no response must
-    // stop the pipeline with a 500, not proxy upstream while skipping the
-    // filters after the branch point (the historical bypass).
     let after_ran = Arc::new(AtomicUsize::new(0));
     let mut branching = PipelineFilter::new(
         0,
@@ -561,6 +558,8 @@ fn body_capabilities_detects_request_body_writer() {
 fn clear_request_body_done_clears_only_request_body_filters() {
     let chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
     // 0: no body access, 1: request body, 2: response body.
+fn request_body_reset_preserves_other_completion_flags() {
+    let chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
     let pipeline = make_pipeline(vec![
         Box::new(PassthroughFilter),
         Box::new(BodyUppercaseFilter),
@@ -574,6 +573,14 @@ fn clear_request_body_done_clears_only_request_body_filters() {
         marks,
         vec![true, false, true],
         "only the request-body filter's mark should be cleared for the next attempt"
+    let mut body_done = [true; 3];
+
+    pipeline.clear_request_body_done(&mut body_done);
+
+    assert_eq!(
+        body_done,
+        [true, false, true],
+        "only request-body completion flags should reset"
     );
 }
 
@@ -688,6 +695,211 @@ async fn execute_request_body_skips_none_access_filters() {
         counter.load(Ordering::SeqCst),
         0,
         "filter with no body access should not be called for body"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Selected-Upstream Request-Body Execution Tests
+// -----------------------------------------------------------------------------
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_read_only() {
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![Box::new(SelectedUpstreamRecorderFilter {
+        label: "sel_a",
+        log: Arc::clone(&log),
+        bodies: Arc::clone(&bodies),
+    })]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"payload"));
+    let action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Continue),
+        "read-only selected-upstream body filter should continue"
+    );
+    assert_eq!(log.lock().unwrap().as_slice(), ["sel_a"], "filter should run once");
+    assert_eq!(
+        bodies.lock().unwrap()[0],
+        Some(Bytes::from_static(b"payload")),
+        "recorded body should match input"
+    );
+    assert_eq!(
+        body,
+        Some(Bytes::from_static(b"payload")),
+        "read-only filter should leave the body unchanged"
+    );
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_mutation() {
+    let pipeline = make_pipeline(vec![Box::new(SelectedUpstreamRewriteFilter)]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"hello"));
+    let action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Continue),
+        "rewrite filter should continue"
+    );
+    assert_eq!(
+        body,
+        Some(Bytes::from_static(b"HELLO")),
+        "read-write filter should rewrite the selected-upstream body"
+    );
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_reject_short_circuits() {
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![
+        Box::new(SelectedUpstreamRejectFilter),
+        Box::new(SelectedUpstreamRecorderFilter {
+            label: "after_reject",
+            log: Arc::clone(&log),
+            bodies: Arc::clone(&bodies),
+        }),
+    ]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"payload"));
+    let action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Reject(r) if r.status == 413),
+        "rejecting filter should short-circuit with its status"
+    );
+    assert!(log.lock().unwrap().is_empty(), "filter after a reject should not run");
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_runs_in_pipeline_order() {
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![
+        Box::new(SelectedUpstreamRecorderFilter {
+            label: "sel_a",
+            log: Arc::clone(&log),
+            bodies: Arc::clone(&bodies),
+        }),
+        Box::new(SelectedUpstreamRecorderFilter {
+            label: "sel_b",
+            log: Arc::clone(&log),
+            bodies: Arc::clone(&bodies),
+        }),
+    ]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"payload"));
+    let _action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        log.lock().unwrap().as_slice(),
+        ["sel_a", "sel_b"],
+        "selected-upstream filters should run in pipeline order"
+    );
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_skips_non_participants() {
+    let chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![Box::new(BodyInspectorFilter {
+        chunks: Arc::clone(&chunks),
+    })]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"payload"));
+    let action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Continue),
+        "no participants should continue"
+    );
+    assert!(
+        chunks.lock().unwrap().is_empty(),
+        "a request-body-only filter must not run in the selected-upstream phase"
+    );
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_preserves_canonical_body() {
+    let pipeline = make_pipeline(vec![Box::new(SelectedUpstreamRewriteFilter)]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let mut body = Some(Bytes::from_static(b"hello"));
+    let _action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        body,
+        Some(Bytes::from_static(b"HELLO")),
+        "the working body should be rewritten"
+    );
+    assert_eq!(
+        ctx.request_body_bytes, 0,
+        "selected-upstream phase must not re-accumulate the canonical request body counter"
+    );
+}
+
+#[tokio::test]
+async fn execute_selected_upstream_request_body_skips_filters_not_executed_in_request_phase() {
+    let counter = Arc::new(AtomicUsize::new(0));
+    let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![
+        Box::new(CountingFilter {
+            counter: Arc::clone(&counter),
+        }),
+        Box::new(SelectedUpstreamRecorderFilter {
+            label: "sel_a",
+            log: Arc::clone(&log),
+            bodies: Arc::clone(&bodies),
+        }),
+    ]);
+    let req = crate::test_utils::make_request(Method::POST, "/upload");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+    ctx.executed_filter_indices = vec![true, false];
+
+    let mut body = Some(Bytes::from_static(b"payload"));
+    let action = pipeline
+        .execute_http_selected_upstream_request_body(&mut ctx, &mut body)
+        .await
+        .unwrap();
+
+    assert!(
+        matches!(action, FilterAction::Continue),
+        "skipped filter should continue"
+    );
+    assert!(
+        log.lock().unwrap().is_empty(),
+        "a filter not executed in the request phase must be skipped here too"
     );
 }
 
@@ -1274,6 +1486,176 @@ fn allow_open_forwarded_headers_with_insecure_flag() {
             .iter()
             .any(|e| e.contains("failure_mode: open") && e.contains("forwarded_headers")),
         "insecure flag should demote open forwarded_headers error to warning: {errors:?}"
+    );
+}
+
+#[test]
+fn errors_conditional_security_filter_in_branch_chain() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "sec",
+        None,
+        vec![ip_acl_entry(vec![when_path("/admin")], FailureMode::default())],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let errors = pipeline.ordering_errors(&entries, false, &SkipPipelineChecks::default());
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("ip_acl") && e.contains("branch 'sec'") && e.contains("request conditions")),
+        "conditional security filter in a branch chain should error: {errors:?}"
+    );
+}
+
+#[test]
+fn errors_open_security_filter_in_branch_chain() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "sec",
+        None,
+        vec![ip_acl_entry(vec![], FailureMode::Open)],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let errors = pipeline.ordering_errors(&entries, false, &SkipPipelineChecks::default());
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("ip_acl") && e.contains("branch 'sec'") && e.contains("failure_mode: open")),
+        "fail-open security filter in a branch chain should error: {errors:?}"
+    );
+}
+
+#[test]
+fn errors_open_security_filter_in_nested_branch_chain() {
+    let registry = FilterRegistry::with_builtins();
+    let inner = host_entry_with_branch("inner", None, vec![ip_acl_entry(vec![], FailureMode::Open)]);
+    let mut entries = vec![host_entry_with_branch("outer", None, vec![inner])];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let errors = pipeline.ordering_errors(&entries, false, &SkipPipelineChecks::default());
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("ip_acl") && e.contains("branch 'inner'") && e.contains("failure_mode: open")),
+        "nested branch chains should be walked: {errors:?}"
+    );
+}
+
+#[test]
+fn allow_open_security_filter_in_branch_chain_with_insecure_flag() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "sec",
+        None,
+        vec![ip_acl_entry(vec![], FailureMode::Open)],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let errors = pipeline.ordering_errors(&entries, true, &SkipPipelineChecks::default());
+    assert!(
+        !errors.iter().any(|e| e.contains("failure_mode: open")),
+        "insecure flag should demote the branch-level open error to a warning: {errors:?}"
+    );
+}
+
+#[test]
+fn skip_conditional_security_suppresses_branch_chain_error() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "sec",
+        None,
+        vec![ip_acl_entry(vec![when_path("/admin")], FailureMode::default())],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let skip = SkipPipelineChecks {
+        conditional_security: true,
+        ..SkipPipelineChecks::default()
+    };
+    let errors = pipeline.ordering_errors(&entries, false, &skip);
+    assert!(
+        !errors.iter().any(|e| e.contains("request conditions")),
+        "conditional_security skip should also cover branch chains: {errors:?}"
+    );
+}
+
+#[test]
+fn warns_but_does_not_error_on_security_filter_in_conditional_branch_chain() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "gated",
+        Some("suspect"),
+        vec![ip_acl_entry(vec![], FailureMode::default())],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+
+    let errors = pipeline.ordering_errors(&entries, false, &SkipPipelineChecks::default());
+    assert!(
+        !errors.iter().any(|e| e.contains("ip_acl")),
+        "a branch-level gate alone must not fail the build: {errors:?}"
+    );
+
+    let warnings = pipeline.ordering_warnings();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("ip_acl") && w.contains("conditional branch 'gated'")),
+        "gated security filter should be reported as an advisory: {warnings:?}"
+    );
+}
+
+#[test]
+fn no_conditional_branch_advisory_for_unconditional_branch_chain() {
+    let registry = FilterRegistry::with_builtins();
+    let mut entries = vec![host_entry_with_branch(
+        "always",
+        None,
+        vec![ip_acl_entry(vec![], FailureMode::default())],
+    )];
+    let pipeline = FilterPipeline::build_with_chains(
+        &mut entries,
+        &registry,
+        &HashMap::new(),
+        &praxis_core::config::InsecureOptions::default(),
+    )
+    .unwrap();
+    let warnings = pipeline.ordering_warnings();
+    assert!(
+        !warnings.iter().any(|w| w.contains("ip_acl")),
+        "an unconditional branch always runs, so no advisory is due: {warnings:?}"
     );
 }
 
@@ -2071,6 +2453,7 @@ async fn skip_to_excludes_skipped_filters_from_response() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
 
@@ -2146,6 +2529,7 @@ async fn skip_to_excludes_skipped_filters_from_body_hooks() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
 
@@ -2179,9 +2563,6 @@ async fn skip_to_excludes_skipped_filters_from_body_hooks() {
 
 #[tokio::test]
 async fn body_hooks_run_for_every_filter_before_the_request_phase() {
-    // A StreamBuffer pre-read runs body hooks before execute_http_request
-    // has populated executed_filter_indices. Nothing is known to be
-    // skipped yet, so every eligible filter must still run.
     let log: Arc<std::sync::Mutex<Vec<&'static str>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
 
     let pipeline = with_body_indices(FilterPipeline {
@@ -2221,6 +2602,7 @@ async fn body_hooks_run_for_every_filter_before_the_request_phase() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
 
@@ -2287,6 +2669,7 @@ async fn all_executed_filters_run_on_response() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
 
@@ -2301,6 +2684,144 @@ async fn all_executed_filters_run_on_response() {
         recorded,
         vec!["second", "first"],
         "all request-executed filters should run on_response in reverse"
+    );
+}
+
+#[tokio::test]
+async fn branch_filter_conditions_skip_it_for_non_matching_requests() {
+    let counter = Arc::new(AtomicUsize::new(0));
+    let pipeline = pipeline_with_branch(vec![PipelineFilter::new(
+        100,
+        AnyFilter::Http(Box::new(CountingFilter {
+            counter: Arc::clone(&counter),
+        })),
+        vec![when_path("/api")],
+        vec![],
+    )]);
+
+    let req = crate::test_utils::make_request(Method::GET, "/other");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+    drop(pipeline.execute_http_request(&mut ctx).await.unwrap());
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "a branch filter whose conditions do not match must be skipped"
+    );
+
+    let req = crate::test_utils::make_request(Method::GET, "/api");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+    drop(pipeline.execute_http_request(&mut ctx).await.unwrap());
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        1,
+        "a branch filter whose conditions match must run"
+    );
+}
+
+#[tokio::test]
+async fn branch_filter_failure_mode_open_swallows_its_error() {
+    let after = Arc::new(AtomicUsize::new(0));
+    let mut failing = PipelineFilter::new(100, AnyFilter::Http(Box::new(ErrorFilter)), vec![], vec![]);
+    failing.failure_mode = FailureMode::Open;
+    let pipeline = pipeline_with_branch(vec![
+        failing,
+        PipelineFilter::new(
+            101,
+            AnyFilter::Http(Box::new(CountingFilter {
+                counter: Arc::clone(&after),
+            })),
+            vec![],
+            vec![],
+        ),
+    ]);
+
+    let req = crate::test_utils::make_request(Method::GET, "/");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+    let result = pipeline.execute_http_request(&mut ctx).await;
+    assert!(result.is_ok(), "failure_mode: open must swallow a branch filter error");
+    assert_eq!(
+        after.load(Ordering::SeqCst),
+        1,
+        "the branch must continue past a swallowed error"
+    );
+}
+
+#[tokio::test]
+async fn branch_filter_failure_mode_closed_propagates_its_error() {
+    let after = Arc::new(AtomicUsize::new(0));
+    let mut failing = PipelineFilter::new(100, AnyFilter::Http(Box::new(ErrorFilter)), vec![], vec![]);
+    failing.failure_mode = FailureMode::Closed;
+    let pipeline = pipeline_with_branch(vec![
+        failing,
+        PipelineFilter::new(
+            101,
+            AnyFilter::Http(Box::new(CountingFilter {
+                counter: Arc::clone(&after),
+            })),
+            vec![],
+            vec![],
+        ),
+    ]);
+
+    let req = crate::test_utils::make_request(Method::GET, "/");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+    let result = pipeline.execute_http_request(&mut ctx).await;
+    assert!(
+        result.is_err(),
+        "the default closed failure mode must propagate a branch filter error"
+    );
+    assert_eq!(
+        after.load(Ordering::SeqCst),
+        0,
+        "the branch must stop at a propagated error"
+    );
+}
+
+#[tokio::test]
+async fn reenter_short_circuit_still_runs_on_response() {
+    let log: Arc<std::sync::Mutex<Vec<&'static str>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let calls = Arc::new(AtomicUsize::new(0));
+
+    let reject_on_second = PipelineFilter::new(
+        0,
+        AnyFilter::Http(Box::new(RejectOnSecondCallFilter {
+            calls: Arc::clone(&calls),
+        })),
+        vec![],
+        vec![],
+    );
+    let mut reenter = PipelineFilter::new(
+        1,
+        AnyFilter::Http(Box::new(LoggingFilter {
+            label: "reenter",
+            log: Arc::clone(&log),
+        })),
+        vec![],
+        vec![],
+    );
+    reenter.branches = vec![ResolvedBranch {
+        name: Arc::from("loop-back"),
+        condition: None,
+        filters: vec![],
+        max_iterations: Some(3),
+        rejoin: RejoinTarget::ReEnter(0),
+    }];
+
+    let pipeline = test_pipeline(BodyCapabilities::default(), vec![reject_on_second, reenter]);
+    let req = crate::test_utils::make_request(Method::GET, "/");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    let action = pipeline.execute_http_request(&mut ctx).await.unwrap();
+    assert!(
+        matches!(action, FilterAction::Reject(_)),
+        "the second pass should short-circuit with a reject"
+    );
+
+    drop(pipeline.execute_http_response(&mut ctx).await.unwrap());
+    assert_eq!(
+        log.lock().unwrap().clone(),
+        vec!["reenter"],
+        "a first-pass filter short-circuited on re-entry must still run on_response"
     );
 }
 
@@ -2352,6 +2873,7 @@ async fn skipped_filter_skips_its_branches() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
 
@@ -2858,6 +3380,40 @@ fn body_done_response_body_skips_filter_on_subsequent_chunks() {
 }
 
 #[tokio::test]
+async fn request_body_done_does_not_suppress_response_body() {
+    let responses = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let pipeline = make_pipeline(vec![Box::new(RequestBodyDoneWithResponseFilter {
+        responses: Arc::clone(&responses),
+    })]);
+    let req = crate::test_utils::make_request(Method::GET, "/");
+    let mut ctx = crate::test_utils::make_filter_context(&req);
+
+    drop(pipeline.execute_http_request(&mut ctx).await.unwrap());
+    let mut req_body = Some(Bytes::from_static(b"req"));
+    drop(
+        pipeline
+            .execute_http_request_body(&mut ctx, &mut req_body, true)
+            .await
+            .unwrap(),
+    );
+
+    drop(pipeline.execute_http_response(&mut ctx).await.unwrap());
+
+    let mut resp_body = Some(Bytes::from_static(b"resp"));
+    drop(
+        pipeline
+            .execute_http_response_body(&mut ctx, &mut resp_body, true)
+            .unwrap(),
+    );
+
+    assert_eq!(
+        responses.lock().unwrap().clone(),
+        vec!["dual_body"],
+        "a request-body BodyDone must not suppress the response-body hook"
+    );
+}
+
+#[tokio::test]
 async fn body_done_with_stream_buffer_mode() {
     let done_chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
     let inspector_chunks = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -2954,8 +3510,6 @@ fn referenced_files_collects_from_every_declaring_filter() {
     );
 }
 
-/// A filter with no external config must not contribute, so the watcher does not
-/// hash or watch files nothing reads.
 #[test]
 fn referenced_files_skips_filters_that_declare_nothing() {
     let pipeline = make_pipeline(vec![
@@ -2970,9 +3524,6 @@ fn referenced_files_skips_filters_that_declare_nothing() {
     );
 }
 
-/// Duplicates survive at this level on purpose: de-duplication belongs to
-/// `ListenerPipelines::referenced_files`, which sees every listener. Collapsing
-/// here would hide a shared document from that caller.
 #[test]
 fn referenced_files_keeps_duplicates_for_the_caller_to_dedupe() {
     let shared = "/etc/praxis/shared.yaml";
@@ -2990,6 +3541,73 @@ fn referenced_files_keeps_duplicates_for_the_caller_to_dedupe() {
 // -----------------------------------------------------------------------------
 // Test Utilities
 // -----------------------------------------------------------------------------
+
+/// Build a [`FilterEntry`] carrying one branch chain named `branch_name`
+/// whose inline sub-chain holds `inner`.
+///
+/// Goes through the same `branch_chains` -> [`ResolvedBranch`] resolution the
+/// server uses, so the branch filter's `conditions` and `failure_mode` are
+/// carried by [`build_filters`], not injected by the test.
+///
+/// [`build_filters`]: super::build_branch
+fn host_entry_with_branch(branch_name: &str, on_result: Option<&str>, inner: Vec<FilterEntry>) -> FilterEntry {
+    FilterEntry {
+        branch_chains: Some(vec![BranchChainConfig {
+            name: branch_name.to_owned(),
+            chains: vec![ChainRef::Inline {
+                name: format!("{branch_name}_chain"),
+                filters: inner,
+            }],
+            max_iterations: None,
+            on_result: on_result.map(|value| praxis_core::config::BranchCondition {
+                filter: "headers".to_owned(),
+                key: "status".to_owned(),
+                value: value.to_owned(),
+            }),
+            rejoin: "next".to_owned(),
+        }]),
+        conditions: vec![],
+        filter_type: "headers".into(),
+        config: serde_yaml::from_str("request_add:\n  - name: X-Host\n    value: \"1\"").unwrap(),
+        name: None,
+        response_conditions: vec![],
+        failure_mode: FailureMode::default(),
+    }
+}
+
+/// Build an `ip_acl` [`FilterEntry`] with the given conditions and failure mode.
+fn ip_acl_entry(conditions: Vec<praxis_core::config::Condition>, failure_mode: FailureMode) -> FilterEntry {
+    FilterEntry {
+        branch_chains: None,
+        conditions,
+        filter_type: "ip_acl".into(),
+        config: serde_yaml::from_str("allow: [\"10.0.0.0/8\"]").unwrap(),
+        name: None,
+        response_conditions: vec![],
+        failure_mode,
+    }
+}
+
+/// Build a pipeline whose single unconditional host filter carries one
+/// unconditional Next-rejoin branch holding `branch_filters`.
+fn pipeline_with_branch(branch_filters: Vec<PipelineFilter>) -> FilterPipeline {
+    let mut parent = PipelineFilter::new(
+        0,
+        AnyFilter::Http(Box::new(CountingFilter {
+            counter: Arc::new(AtomicUsize::new(0)),
+        })),
+        vec![],
+        vec![],
+    );
+    parent.branches = vec![ResolvedBranch {
+        condition: None,
+        filters: branch_filters,
+        max_iterations: None,
+        name: Arc::from("br"),
+        rejoin: RejoinTarget::Next,
+    }];
+    test_pipeline(BodyCapabilities::default(), vec![parent])
+}
 
 /// A filter that reads config from external documents.
 struct ReferencingFilter {
@@ -3165,6 +3783,69 @@ impl HttpFilter for BodyLoggingFilter {
     }
 }
 
+/// Continues on the first `on_request`, rejects on every later call.
+struct RejectOnSecondCallFilter {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl HttpFilter for RejectOnSecondCallFilter {
+    fn name(&self) -> &'static str {
+        "reject_on_second"
+    }
+
+    async fn on_request(&self, _ctx: &mut crate::HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        if self.calls.fetch_add(1, Ordering::SeqCst) >= 1 {
+            Ok(FilterAction::Reject(crate::Rejection::status(403)))
+        } else {
+            Ok(FilterAction::Continue)
+        }
+    }
+}
+
+/// Finishes the request body (`BodyDone`) but records each response-body call.
+struct RequestBodyDoneWithResponseFilter {
+    responses: Arc<std::sync::Mutex<Vec<&'static str>>>,
+}
+
+#[async_trait]
+impl HttpFilter for RequestBodyDoneWithResponseFilter {
+    fn name(&self) -> &'static str {
+        "dual_body"
+    }
+
+    fn request_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadOnly
+    }
+
+    fn response_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadOnly
+    }
+
+    async fn on_request(&self, _ctx: &mut crate::HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        Ok(FilterAction::Continue)
+    }
+
+    async fn on_request_body(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+        _body: &mut Option<Bytes>,
+        _end_of_stream: bool,
+    ) -> Result<FilterAction, FilterError> {
+        Ok(FilterAction::BodyDone)
+    }
+
+    fn on_response_body(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+        _body: &mut Option<Bytes>,
+        _end_of_stream: bool,
+    ) -> Result<FilterAction, FilterError> {
+        self.responses.lock().unwrap().push("dual_body");
+        Ok(FilterAction::Continue)
+    }
+}
+
 /// A filter that always returns an error.
 struct ErrorFilter;
 
@@ -3274,6 +3955,110 @@ impl HttpFilter for BodyRejectFilter {
         }
 
         Ok(FilterAction::Continue)
+    }
+}
+
+/// A selected-upstream request-body filter that records the buffered body
+/// and its label (read-only), for order and canonical-body assertions.
+struct SelectedUpstreamRecorderFilter {
+    label: &'static str,
+    log: Arc<std::sync::Mutex<Vec<&'static str>>>,
+    bodies: Arc<std::sync::Mutex<Vec<Option<Bytes>>>>,
+}
+
+#[async_trait]
+impl HttpFilter for SelectedUpstreamRecorderFilter {
+    fn name(&self) -> &'static str {
+        self.label
+    }
+
+    async fn on_request(&self, _ctx: &mut crate::HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        Ok(FilterAction::Continue)
+    }
+
+    fn selected_upstream_request_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadOnly
+    }
+
+    fn request_body_mode(&self) -> BodyMode {
+        BodyMode::StreamBuffer { max_bytes: Some(4096) }
+    }
+
+    async fn on_selected_upstream_request_body(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+        body: &mut Option<Bytes>,
+    ) -> Result<crate::SelectedUpstreamBodyOutcome, FilterError> {
+        self.log.lock().unwrap().push(self.label);
+        self.bodies.lock().unwrap().push(body.clone());
+        Ok(crate::SelectedUpstreamBodyOutcome::Continue)
+    }
+}
+
+/// A selected-upstream request-body filter that uppercases the buffered
+/// body in place (read-write).
+struct SelectedUpstreamRewriteFilter;
+
+#[async_trait]
+impl HttpFilter for SelectedUpstreamRewriteFilter {
+    fn name(&self) -> &'static str {
+        "selected_upstream_rewrite"
+    }
+
+    async fn on_request(&self, _ctx: &mut crate::HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        Ok(FilterAction::Continue)
+    }
+
+    fn selected_upstream_request_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadWrite
+    }
+
+    fn request_body_mode(&self) -> BodyMode {
+        BodyMode::StreamBuffer { max_bytes: Some(4096) }
+    }
+
+    async fn on_selected_upstream_request_body(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+        body: &mut Option<Bytes>,
+    ) -> Result<crate::SelectedUpstreamBodyOutcome, FilterError> {
+        if let Some(b) = body {
+            let upper: Vec<u8> = b.iter().map(|c| c.to_ascii_uppercase()).collect();
+            *b = Bytes::from(upper);
+        }
+        Ok(crate::SelectedUpstreamBodyOutcome::Continue)
+    }
+}
+
+/// A selected-upstream request-body filter that always rejects with 413.
+struct SelectedUpstreamRejectFilter;
+
+#[async_trait]
+impl HttpFilter for SelectedUpstreamRejectFilter {
+    fn name(&self) -> &'static str {
+        "selected_upstream_reject"
+    }
+
+    async fn on_request(&self, _ctx: &mut crate::HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        Ok(FilterAction::Continue)
+    }
+
+    fn selected_upstream_request_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadOnly
+    }
+
+    fn request_body_mode(&self) -> BodyMode {
+        BodyMode::StreamBuffer { max_bytes: Some(4096) }
+    }
+
+    async fn on_selected_upstream_request_body(
+        &self,
+        _ctx: &mut crate::HttpFilterContext<'_>,
+        _body: &mut Option<Bytes>,
+    ) -> Result<crate::SelectedUpstreamBodyOutcome, FilterError> {
+        Ok(crate::SelectedUpstreamBodyOutcome::Reject(crate::Rejection::status(
+            413,
+        )))
     }
 }
 
@@ -3571,6 +4356,8 @@ fn with_body_indices(mut pipeline: FilterPipeline) -> FilterPipeline {
     let (request, response) = super::body::body_filter_indices(&pipeline.filters);
     pipeline.request_body_filter_indices = request;
     pipeline.response_body_filter_indices = response;
+    pipeline.selected_upstream_request_body_filter_indices =
+        super::body::selected_upstream_request_body_indices(&pipeline.filters);
     pipeline
 }
 
@@ -3595,6 +4382,7 @@ fn test_pipeline(body_capabilities: BodyCapabilities, filters: Vec<PipelineFilte
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     })
 }
@@ -3812,8 +4600,6 @@ async fn body_condition_without_promotion_skips_gated() {
 #[tokio::test]
 async fn body_condition_promoter_after_gated_skips() {
     let ran = Arc::new(AtomicBool::new(false));
-    // Promoter is ordered AFTER the gated filter, so the gate is not yet set
-    // when the gated filter's condition is evaluated.
     let pipeline = make_pipeline_with_conditions(vec![
         (
             Box::new(GatedRecordingBodyFilter { ran: Arc::clone(&ran) }),
@@ -3906,6 +4692,7 @@ fn make_pipeline(filters: Vec<Box<dyn HttpFilter>>) -> FilterPipeline {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     })
 }
@@ -3939,6 +4726,7 @@ fn make_pipeline_with_conditions(
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     })
 }
@@ -3972,6 +4760,7 @@ fn make_pipeline_with_response_conditions(
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     })
 }
@@ -4613,6 +5402,7 @@ fn streaming_capability_detected_when_filter_declares_it() {
         response_body_ceiling: None,
         request_body_filter_indices: Vec::new(),
         response_body_filter_indices: Vec::new(),
+        selected_upstream_request_body_filter_indices: Vec::new(),
         allow_private_upstreams: false,
     });
     assert!(
@@ -4953,9 +5743,6 @@ impl HttpFilter for TerminalDouble {
 
 #[test]
 fn terminal_filters_detects_filter_nested_in_branch() {
-    // A terminal filter buried inside a branch sub-chain must be reported. The
-    // top-level-only scan would miss it, letting it activate and drop its
-    // terminal response at runtime inside an outbound chain.
     let mut parent = make_pipeline(vec![Box::new(CountingFilter {
         counter: Arc::new(AtomicUsize::new(0)),
     })]);
@@ -4980,10 +5767,6 @@ fn terminal_filters_detects_filter_nested_in_branch() {
 
 #[test]
 fn set_session_stores_propagates_into_branch_nested_pipelines() {
-    // A nested-pipeline filter placed INSIDE a branch sub-chain, not at the top
-    // level. Runtime-resource setters route through `visit_nested_pipelines`,
-    // which must descend into branch sub-chains so a branch-contained callout's
-    // bound outbound pipeline receives resources too — not just top-level ones.
     let branch_filter = NestedPipelineFilter {
         nested: make_pipeline(vec![]),
     };
@@ -5005,9 +5788,6 @@ fn set_session_stores_propagates_into_branch_nested_pipelines() {
 
     parent.set_session_stores(Arc::new(crate::SessionStoreRegistry::new()));
 
-    // Observe the branch-nested embedded pipeline directly — reach into the
-    // branch filter and query its own nested pipeline — so the assertion does
-    // not depend on the very traversal under test.
     let mut nested_has_stores = false;
     if let AnyFilter::Http(filter) = &mut parent.filters[0].branches[0].filters[0].filter {
         filter.visit_nested_pipelines(&mut |pipeline| {

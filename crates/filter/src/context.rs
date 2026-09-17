@@ -9,7 +9,7 @@ use std::{
     collections::{HashMap, VecDeque},
     net::IpAddr,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use http::{HeaderMap, Method, StatusCode, Uri, header::HeaderName};
@@ -22,7 +22,7 @@ use crate::{
     FilterError, IterationState,
     body::BodyMode,
     condition::{ConditionError, HeaderSource},
-    extensions::RequestExtensions,
+    extensions::{RequestExtensions, SelectedClusterApplication},
     pipeline::body::merge_body_mode,
     results::FilterResultSet,
 };
@@ -431,6 +431,13 @@ pub struct HttpFilterContext<'a> {
     /// only forgoes an optimisation, never an edit.
     pub response_headers_modified: bool,
 
+    /// Whether the upstream was actually contacted for this request
+    /// (Pingora ran `upstream_peer`). `false` when the request was
+    /// rejected or aborted before any upstream connection, so response-
+    /// phase filters (e.g. the circuit breaker) can distinguish a genuine
+    /// upstream failure from a request that never reached the cluster.
+    pub upstream_reached: bool,
+
     /// Index of the selected endpoint in the cluster's
     /// endpoint list. Set by the load balancer filter
     /// for use by passive health checking in the
@@ -486,6 +493,16 @@ pub struct HttpFilterContext<'a> {
     pub upstream: Option<Upstream>,
 }
 
+/// Leftover per-read timeout a response-body filter asked to apply to
+/// the live streaming body.
+///
+/// Dispatch snapshots `ctx.upstream`'s `read_timeout` into
+/// [`praxis_core::subrequest::SubResponseBody`]. Mutating a reconstructed
+/// `ctx.upstream` later does not change that snapshot, so filters store
+/// leftover budget here and the streaming executor copies it onto the
+/// active read timer.
+struct StreamReadTimeoutCap(Duration);
+
 impl HttpFilterContext<'_> {
     /// Selected cluster name, if any.
     pub fn cluster_name(&self) -> Option<&str> {
@@ -495,6 +512,79 @@ impl HttpFilterContext<'_> {
     /// Upstream peer address, if selected.
     pub fn upstream_addr(&self) -> Option<&str> {
         self.upstream.as_ref().map(|u| &*u.address)
+    }
+
+    /// Cap the live streaming body's next per-chunk read at `timeout`.
+    ///
+    /// Dispatch copies the selected peer's `read_timeout` into the live
+    /// [`SubResponseBody`](praxis_core::subrequest::SubResponseBody). A
+    /// reconstructed `ctx.upstream` is detached from that snapshot, so
+    /// recapping leftover budget on the peer does not change the active
+    /// read timer. Response-body filters call this instead; the streaming
+    /// executor applies the cap after the body-filter pass.
+    ///
+    /// A tighter existing cap is left in place.
+    pub fn cap_stream_read_timeout(&mut self, timeout: Duration) {
+        let next = self
+            .extensions
+            .get::<StreamReadTimeoutCap>()
+            .map_or(timeout, |existing| existing.0.min(timeout));
+        self.extensions.insert(StreamReadTimeoutCap(next));
+    }
+
+    /// Leftover per-read timeout requested during this body-filter pass.
+    pub fn stream_read_timeout_cap(&self) -> Option<Duration> {
+        self.extensions.get::<StreamReadTimeoutCap>().map(|cap| cap.0)
+    }
+
+    /// Take leftover per-read timeout so the streaming executor can apply it.
+    pub(crate) fn take_stream_read_timeout_cap(&mut self) -> Option<Duration> {
+        self.extensions.remove::<StreamReadTimeoutCap>().map(|cap| cap.0)
+    }
+
+    /// Opaque application protocol of the cluster selected for this exchange.
+    ///
+    /// Published by the load balancer after a successful upstream selection
+    /// and stable for the life of the exchange, so every phase (request,
+    /// response, response-body, logging) observes the same value. `None`
+    /// when no cluster was selected or the selected cluster declared no
+    /// `application_protocol`. The value is opaque to Praxis core; consuming
+    /// filters interpret it.
+    pub fn selected_application_protocol(&self) -> Option<&str> {
+        self.extensions
+            .get::<SelectedClusterApplication>()
+            .and_then(SelectedClusterApplication::protocol)
+    }
+
+    /// Opaque application provider of the cluster selected for this exchange.
+    ///
+    /// Companion to [`selected_application_protocol`]; identical lifecycle
+    /// and opacity, reflecting the selected cluster's `application_provider`.
+    ///
+    /// [`selected_application_protocol`]: Self::selected_application_protocol
+    pub fn selected_application_provider(&self) -> Option<&str> {
+        self.extensions
+            .get::<SelectedClusterApplication>()
+            .and_then(SelectedClusterApplication::provider)
+    }
+
+    /// Publish the selected cluster's opaque application metadata into the
+    /// request-scoped extensions.
+    ///
+    /// Called by the trusted built-in load balancer after a successful upstream
+    /// selection. Publication is authoritative: a tagged cluster replaces any
+    /// prior value, and an untagged cluster removes it. This matters because a
+    /// single [`RequestExtensions`] is threaded across `iterative_request_router`
+    /// steps; without the removal, a later step selecting an untagged cluster
+    /// would leave the previous step's protocol/provider visible and a consuming
+    /// filter could apply the wrong transformation.
+    pub(crate) fn publish_selected_application(&mut self, protocol: Option<Arc<str>>, provider: Option<Arc<str>>) {
+        match SelectedClusterApplication::new(protocol, provider) {
+            Some(app) => self.extensions.insert(app),
+            None => {
+                self.extensions.remove::<SelectedClusterApplication>();
+            },
+        }
     }
 
     /// Shared sub-request client, if set.
@@ -1133,6 +1223,41 @@ mod tests {
         let req = crate::test_utils::make_request(Method::GET, "/");
         let ctx = crate::test_utils::make_filter_context(&req);
         assert!(ctx.upstream_addr().is_none(), "upstream addr should be None when unset");
+    }
+
+    #[test]
+    fn cap_stream_read_timeout_tightens_leftover_budget() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.cap_stream_read_timeout(Duration::from_secs(30));
+        ctx.cap_stream_read_timeout(Duration::from_millis(250));
+        assert_eq!(
+            ctx.stream_read_timeout_cap(),
+            Some(Duration::from_millis(250)),
+            "leftover budget must recap the live timer, not a detached peer copy"
+        );
+        assert_eq!(
+            ctx.take_stream_read_timeout_cap(),
+            Some(Duration::from_millis(250)),
+            "the streaming executor must be able to take the leftover cap"
+        );
+        assert!(
+            ctx.stream_read_timeout_cap().is_none(),
+            "taking the cap must not leave it in request extensions"
+        );
+    }
+
+    #[test]
+    fn cap_stream_read_timeout_keeps_a_tighter_existing_cap() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.cap_stream_read_timeout(Duration::from_millis(100));
+        ctx.cap_stream_read_timeout(Duration::from_secs(1));
+        assert_eq!(
+            ctx.stream_read_timeout_cap(),
+            Some(Duration::from_millis(100)),
+            "a tighter existing leftover cap must not be relaxed"
+        );
     }
 
     #[test]
@@ -2230,6 +2355,130 @@ mod tests {
         assert!(
             ctx.stream_termination().is_some_and(StreamTermination::is_handled),
             "handled state should persist for the session"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Selected Cluster Application Tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn selected_application_absent_by_default() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let ctx = crate::test_utils::make_filter_context(&req);
+        assert!(
+            ctx.selected_application_protocol().is_none(),
+            "protocol should be absent before any selection"
+        );
+        assert!(
+            ctx.selected_application_provider().is_none(),
+            "provider should be absent before any selection"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_exposes_both_fields() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(Some(Arc::from("openai_chat_completions")), Some(Arc::from("vllm")));
+        assert_eq!(
+            ctx.selected_application_protocol(),
+            Some("openai_chat_completions"),
+            "published protocol should be readable"
+        );
+        assert_eq!(
+            ctx.selected_application_provider(),
+            Some("vllm"),
+            "published provider should be readable"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_protocol_only() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(Some(Arc::from("openai_responses")), None);
+        assert_eq!(
+            ctx.selected_application_protocol(),
+            Some("openai_responses"),
+            "published protocol should be readable"
+        );
+        assert!(
+            ctx.selected_application_provider().is_none(),
+            "an unpublished provider should stay absent"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_provider_only() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(None, Some(Arc::from("openai")));
+        assert!(
+            ctx.selected_application_protocol().is_none(),
+            "an unpublished protocol should stay absent"
+        );
+        assert_eq!(
+            ctx.selected_application_provider(),
+            Some("openai"),
+            "published provider should be readable"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_is_noop_when_both_absent() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(None, None);
+        assert!(
+            ctx.selected_application_protocol().is_none(),
+            "publishing nothing must leave the protocol absent"
+        );
+        assert!(
+            ctx.selected_application_provider().is_none(),
+            "publishing nothing must leave the provider absent"
+        );
+        assert!(
+            ctx.extensions.get::<SelectedClusterApplication>().is_none(),
+            "an untagged cluster must not insert an extension value"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_untagged_clears_prior_selection() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(Some(Arc::from("openai_chat_completions")), Some(Arc::from("vllm")));
+        ctx.publish_selected_application(None, None);
+        assert!(
+            ctx.selected_application_protocol().is_none(),
+            "a later untagged selection must clear the prior protocol so a reused context cannot leak stale metadata"
+        );
+        assert!(
+            ctx.selected_application_provider().is_none(),
+            "a later untagged selection must clear the prior provider so a reused context cannot leak stale metadata"
+        );
+        assert!(
+            ctx.extensions.get::<SelectedClusterApplication>().is_none(),
+            "an untagged re-selection must remove the extension value entirely"
+        );
+    }
+
+    #[test]
+    fn publish_selected_application_replaces_prior_selection() {
+        let req = crate::test_utils::make_request(Method::GET, "/");
+        let mut ctx = crate::test_utils::make_filter_context(&req);
+        ctx.publish_selected_application(Some(Arc::from("openai_chat_completions")), Some(Arc::from("vllm")));
+        ctx.publish_selected_application(Some(Arc::from("anthropic_messages")), Some(Arc::from("bedrock")));
+        assert_eq!(
+            ctx.selected_application_protocol(),
+            Some("anthropic_messages"),
+            "a later tagged selection must overwrite the prior protocol"
+        );
+        assert_eq!(
+            ctx.selected_application_provider(),
+            Some("bedrock"),
+            "a later tagged selection must overwrite the prior provider"
         );
     }
 }

@@ -79,8 +79,9 @@ enum GatedIdentity {
 /// scanning, audit emission, and (under `body_access: read_write`)
 /// request / response body rewriting.
 ///
-/// Experimental: requires the `policy-engine` cargo feature, which
-/// is off by default. Registered under the YAML filter name `policy`.
+/// Registered under the YAML filter name `policy`. The `policy-engine`
+/// cargo feature is on by default; `--no-default-features` leaves the
+/// filter out.
 ///
 /// A single request can carry multiple identity sources — user JWT in
 /// `Authorization`, agent JWT in `X-Agent-Token`, workload JWT in
@@ -99,6 +100,16 @@ enum GatedIdentity {
 /// `body_access: read_write` enables the JSON-RPC re-serialization
 /// round-trip so APL field mutators (`redact()`, `assign()`) rewrite
 /// the upstream request body and the downstream response.
+///
+/// Outbound policy calls share the proxy's sub-request limits and circuit
+/// breaker, use HTTP/1.1, and keep a separate 1 MiB response ceiling. TLS
+/// uses the platform trust store; cluster private CAs and client
+/// certificates do not apply. Private destinations require
+/// `allow_private_idp`.
+///
+/// An endpoint URL may name an IP address over `http`, but not over
+/// `https`: an IP carries no SNI, and Pingora peers skip certificate
+/// verification entirely when SNI is empty. Use a hostname for `https`.
 ///
 /// # YAML configuration
 ///
@@ -364,18 +375,25 @@ impl PolicyFilter {
     /// Keys are normalized to ASCII lowercase. HTTP header names are
     /// case-insensitive (RFC 7230 §3.2) but the `HashMap` lookup is
     /// case-sensitive; plugins lowercase their configured header
-    /// before lookup to match.
+    /// before lookup to match. Duplicate field-lines of the same header
+    /// are comma-joined (RFC 7230 §3.2.2), not collapsed to the last value.
     pub(super) fn snapshot_headers(ctx: &HttpFilterContext<'_>) -> std::collections::HashMap<String, String> {
-        ctx.request
-            .headers
-            .iter()
-            .filter_map(|(name, value)| {
-                value
-                    .to_str()
-                    .ok()
-                    .map(|v| (name.as_str().to_ascii_lowercase(), v.to_owned()))
-            })
-            .collect()
+        // Duplicate field-lines of the same header are comma-joined
+        // (RFC 7230 §3.2.2) instead of collapsed to the last value, so
+        // the authorization view matches what a spec-compliant recipient
+        // sees and a spoofed extra line cannot silently outrank the
+        // proxy's own value.
+        let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (name, value) in &ctx.request.headers {
+            let Ok(text) = value.to_str() else { continue };
+            map.entry(name.as_str().to_ascii_lowercase())
+                .and_modify(|acc| {
+                    acc.push_str(", ");
+                    acc.push_str(text);
+                })
+                .or_insert_with(|| text.to_owned());
+        }
+        map
     }
 
     /// Build a fresh `IdentityPayload` from pre-snapshotted headers.
@@ -410,7 +428,7 @@ impl PolicyFilter {
     /// Resolve identity by invoking the identity hook chain. Returns the
     /// resolved [`IdentityPayload`] (subject / client / workload / raw
     /// credentials / delegation) or a rejection when no identity
-    /// continues. Cheap — the JWT verifier hits its in-process key cache.
+    /// continues.
     #[expect(clippy::large_stack_frames, reason = "async handler over large CMF/pipeline types")]
     async fn resolve_identity(
         &self,
@@ -476,16 +494,15 @@ impl PolicyFilter {
         Self::publish_identity_projection(ctx, Self::authenticated_identity(identity));
     }
 
-    /// Install the bundled transport with the configured destination policy.
+    /// Install the proxy-backed transport with the configured destination policy.
     fn install_http_transport(mgr: &Arc<PolicyEngine>, allow_private: bool) -> bool {
         if allow_private {
             tracing::info!(
                 target: "policy.filter",
                 "policy: allowing the engine to reach private and loopback IdP addresses"
             );
-            return mgr.set_http_transport(Arc::new(ppe::HyperTransport::new().with_allow_private_destinations()));
         }
-        ppe::install_default_http_transport(mgr)
+        mgr.set_http_transport(Arc::new(super::transport::PolicyHttpTransport::new(allow_private)))
     }
 
     /// Build the public string-valued identity projection from a validated payload.
@@ -1528,4 +1545,34 @@ pub(super) fn attach_delegated_tokens(ctx: &mut HttpFilterContext<'_>, extension
     }
 
     count
+}
+
+// -----------------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------------
+
+#[cfg(test)]
+#[expect(clippy::allow_attributes, reason = "blanket test suppressions")]
+#[allow(clippy::unwrap_used, reason = "tests")]
+mod tests {
+    use super::PolicyFilter;
+
+    #[test]
+    fn snapshot_headers_comma_joins_duplicate_field_lines() {
+        let mut req = crate::test_utils::make_request(http::Method::GET, "/");
+        req.headers
+            .append(http::header::HeaderName::from_static("x-role"), "user".parse().unwrap());
+        req.headers.append(
+            http::header::HeaderName::from_static("x-role"),
+            "admin".parse().unwrap(),
+        );
+        let ctx = crate::test_utils::make_filter_context(&req);
+
+        let snapshot = PolicyFilter::snapshot_headers(&ctx);
+        assert_eq!(
+            snapshot.get("x-role").map(String::as_str),
+            Some("user, admin"),
+            "duplicate header field-lines must be comma-joined, not collapsed to the last value"
+        );
+    }
 }
